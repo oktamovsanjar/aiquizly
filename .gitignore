@@ -1,0 +1,45 @@
+# Environment
+.env
+*.env
+
+# Go
+services/gateway/gateway
+services/game/game
+services/notifier/notifier
+**/vendor/
+**/bin/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.tar
+
+# Test fixtures (sample files)
+services/ai-engine/tests/fixtures/*.docx
+services/ai-engine/tests/fixtures/*.pdf
+services/ai-engine/tests/fixtures/*.xlsx
+services/ai-engine/tests/fixtures/*.png

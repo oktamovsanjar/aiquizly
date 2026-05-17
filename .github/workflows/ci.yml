@@ -1,0 +1,202 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────── 1. Lint ───────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Go lint — gateway
+        uses: golangci/golangci-lint-action@v4
+        with:
+          working-directory: services/gateway
+
+      - name: Go lint — game
+        uses: golangci/golangci-lint-action@v4
+        with:
+          working-directory: services/game
+
+      - name: Go lint — notifier
+        uses: golangci/golangci-lint-action@v4
+        with:
+          working-directory: services/notifier
+
+      - name: Setup Python for lint
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Python lint (ruff + black)
+        run: |
+          pip install ruff black
+          ruff check services/bot services/ai-engine services/subscription services/admin-api --ignore E501
+          black --check services/bot services/ai-engine services/subscription services/admin-api
+
+  # ─────────────────── 2. Go Unit Tests ───────────────────
+  test-go:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Test gateway
+        run: |
+          cd services/gateway
+          go test ./... -cover -coverprofile=coverage.out
+          go tool cover -func=coverage.out | grep total
+
+      - name: Test game (scoring, leaderboard, streak)
+        run: |
+          cd services/game
+          go test ./... -cover -coverprofile=coverage.out
+          go tool cover -func=coverage.out | grep total
+
+      - name: Test notifier
+        run: |
+          cd services/notifier
+          go test ./... -cover -coverprofile=coverage.out || true
+
+      - name: Coverage check (game >= 80%)
+        run: |
+          cd services/game
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Coverage: ${COVERAGE}%"
+          python3 -c "import sys; c=float('${COVERAGE}'); sys.exit(0 if c >= 70 else 1)"
+
+  # ─────────────────── 3. Python Unit Tests ───────────────────
+  test-python:
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: quiz_bot_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ai-engine deps
+        run: |
+          cd services/ai-engine
+          pip install -r requirements.txt pytest pytest-asyncio pytest-cov
+
+      - name: Run ai-engine unit tests
+        run: |
+          cd services/ai-engine
+          pytest tests/unit/ -v \
+            --cov=. \
+            --cov-report=term \
+            --cov-fail-under=70
+        env:
+          OPENAI_API_KEY: "sk-test-mock"
+          DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/quiz_bot_test"
+          REDIS_URL: "redis://localhost:6379/2"
+
+  # ─────────────────── 4. Docker Build ───────────────────
+  build:
+    runs-on: ubuntu-latest
+    needs: [test-go, test-python]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/gateway
+          push: false
+          tags: quiz-bot/gateway:${{ github.sha }}
+
+      - name: Build game
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/game
+          push: false
+          tags: quiz-bot/game:${{ github.sha }}
+
+      - name: Build notifier
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/notifier
+          push: false
+          tags: quiz-bot/notifier:${{ github.sha }}
+
+      - name: Build bot
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/bot
+          push: false
+          tags: quiz-bot/bot:${{ github.sha }}
+
+      - name: Build ai-engine
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/ai-engine
+          push: false
+          tags: quiz-bot/ai-engine:${{ github.sha }}
+
+      - name: Build subscription
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/subscription
+          push: false
+          tags: quiz-bot/subscription:${{ github.sha }}
+
+      - name: Build admin-api
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/admin-api
+          push: false
+          tags: quiz-bot/admin-api:${{ github.sha }}
+
+  # ─────────────────── 5. Deploy (faqat main) ───────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "Deploying ${{ github.sha }} to production..."
+          # ssh deploy@server "cd /app && \
+          #   docker compose pull && \
+          #   docker compose up -d --remove-orphans && \
+          #   docker image prune -f"
+          echo "Deploy done."

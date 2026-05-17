@@ -1,0 +1,213 @@
+version: "3.8"
+
+services:
+  # === GO SERVICES ===
+  gateway:
+    build: ./services/gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - BOT_SERVICE_URL=http://bot:8000
+      - GAME_SERVICE_URL=http://game:8081
+      - GATEWAY_PORT=8080
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  game:
+    build: ./services/game
+    ports:
+      - "8081:8081"
+    environment:
+      - DATABASE_URL=postgres://user:pass@postgres:5432/quiz_bot
+      - REDIS_URL=redis://redis:6379/0
+      - GAME_PORT=8081
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  notifier:
+    build: ./services/notifier
+    environment:
+      - REDIS_URL=redis://redis:6379/2
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # === PYTHON SERVICES ===
+  bot:
+    build: ./services/bot
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/quiz_bot
+      - REDIS_URL=redis://redis:6379/1
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GAME_SERVICE_URL=http://game:8081
+      - AI_ENGINE_URL=http://ai-engine:8002
+      - SUBSCRIPTION_URL=http://subscription:8003
+      - BOT_PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  ai-engine:
+    build: ./services/ai-engine
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/quiz_bot
+      - REDIS_URL=redis://redis:6379/2
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AI_ENGINE_PORT=8002
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  ai-worker:
+    build: ./services/ai-engine
+    command: celery -A tasks.process_file:celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/quiz_bot
+      - REDIS_URL=redis://redis:6379/2
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  subscription:
+    build: ./services/subscription
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/quiz_bot
+      - REDIS_URL=redis://redis:6379/0
+      - SUBSCRIPTION_PORT=8003
+      - PAYME_MERCHANT_ID=${PAYME_MERCHANT_ID}
+      - PAYME_KEY=${PAYME_KEY}
+      - CLICK_MERCHANT_ID=${CLICK_MERCHANT_ID}
+      - CLICK_SERVICE_ID=${CLICK_SERVICE_ID}
+      - CLICK_SECRET_KEY=${CLICK_SECRET_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  admin-api:
+    build: ./services/admin-api
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/quiz_bot
+      - REDIS_URL=redis://redis:6379/0
+      - ADMIN_API_PORT=8004
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # === INFRASTRUCTURE ===
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=pass
+      - POSTGRES_DB=quiz_bot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d quiz_bot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

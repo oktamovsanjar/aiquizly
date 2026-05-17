@@ -1,0 +1,153 @@
+version: "3.8"
+
+# Test muhiti — QA.md §7 bo'yicha
+# Ishlatish: docker compose -f docker-compose.test.yml up -d
+# Testlar: pytest tests/integration/ -v
+
+services:
+  # ─────────────────── Infrastructure ───────────────────
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: quiz_bot_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    ports:
+      - "5433:5432"   # 5433 → host conflict bo'lmasin
+    tmpfs:
+      - /var/lib/postgresql/data   # RAM da — tez
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d quiz_bot_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"   # 6380 → host conflict bo'lmasin
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─────────────────── Services (test mode) ───────────────────
+  gateway-test:
+    build:
+      context: ./services/gateway
+    ports:
+      - "18080:8080"
+    environment:
+      - REDIS_URL=redis://redis-test:6379/0
+      - BOT_SERVICE_URL=http://bot-test:8000
+      - GAME_SERVICE_URL=http://game-test:8081
+      - LOG_LEVEL=debug
+    depends_on:
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  game-test:
+    build:
+      context: ./services/game
+    ports:
+      - "18081:8081"
+    environment:
+      - DATABASE_URL=postgres://test:test@postgres-test:5432/quiz_bot_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - GAME_PORT=8081
+      - LOG_LEVEL=debug
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  ai-engine-test:
+    build:
+      context: ./services/ai-engine
+    ports:
+      - "18002:8002"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://test:test@postgres-test:5432/quiz_bot_test
+      - REDIS_URL=redis://redis-test:6379/2
+      - OPENAI_API_KEY=sk-test-mock
+      - AI_ENGINE_PORT=8002
+      - LOG_LEVEL=debug
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  ai-worker-test:
+    build:
+      context: ./services/ai-engine
+    command: celery -A tasks.process_file.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://test:test@postgres-test:5432/quiz_bot_test
+      - REDIS_URL=redis://redis-test:6379/2
+      - OPENAI_API_KEY=sk-test-mock
+    depends_on:
+      redis-test:
+        condition: service_healthy
+      postgres-test:
+        condition: service_healthy
+
+  subscription-test:
+    build:
+      context: ./services/subscription
+    ports:
+      - "18003:8003"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://test:test@postgres-test:5432/quiz_bot_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - SUBSCRIPTION_PORT=8003
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  admin-api-test:
+    build:
+      context: ./services/admin-api
+    ports:
+      - "18004:8004"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://test:test@postgres-test:5432/quiz_bot_test
+      - ADMIN_API_PORT=8004
+      - ADMIN_SECRET=test-admin-secret
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
