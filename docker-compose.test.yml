@@ -84,6 +84,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://test:test@postgres-test:5432/quiz_bot_test
       - REDIS_URL=redis://redis-test:6379/2
       - OPENAI_API_KEY=sk-test-mock
+      - AI_PROVIDER=openai
+      - AI_MODEL_PRIMARY=gpt-4o-mini
       - AI_ENGINE_PORT=8002
       - LOG_LEVEL=debug
     depends_on:
@@ -92,7 +94,7 @@ services:
       redis-test:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -127,7 +129,7 @@ services:
       redis-test:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -146,7 +148,7 @@ services:
       postgres-test:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
