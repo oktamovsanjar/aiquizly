@@ -1,4 +1,5 @@
 """Quiz oqimi — ko'rish, tanlash, o'ynash, to'xtatish, natijalar."""
+import logging
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -12,8 +13,14 @@ from keyboards.inline import (
     quiz_browse_keyboard, quiz_list_keyboard, set_select_keyboard,
     time_select_keyboard, quiz_start_keyboard, stop_quiz_keyboard,
     pause_quiz_keyboard, quiz_result_keyboard, retry_result_keyboard,
+    subscribe_group_keyboard,
 )
 from utils.api import ai_engine_client, game_client
+
+logger = logging.getLogger(__name__)
+
+# Auto-pause: 2 ta ketma-ket skip bo'lsa pauza
+AUTO_PAUSE_SKIP_COUNT = 2
 
 router = Router()
 
@@ -71,13 +78,68 @@ async def browse_my_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
 
 
+# ─────────────────────────── Obunalarim ───────────────────────────
+
+@router.callback_query(F.data == "qb:subs")
+async def browse_subscriptions(cb: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(QuizStates.BROWSING_SUBSCRIPTIONS)
+    # DB dan foydalanuvchining obunalarini olish
+    from db import AsyncSessionLocal
+    from db.models import QuizGroupSubscriber, QuizGroup, User
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(QuizGroup)
+            .join(QuizGroupSubscriber, QuizGroupSubscriber.quiz_group_id == QuizGroup.id)
+            .join(User, User.id == QuizGroupSubscriber.user_id)
+            .where(User.telegram_id == cb.from_user.id)
+            .where(QuizGroup.is_active == True)
+        )
+        groups = result.scalars().all()
+
+    if not groups:
+        await cb.message.edit_text(
+            "📌 Siz hali hech qaysi quiz guruhiga obuna bo'lmagansiz.\n\n"
+            "Ommaviy quizlarda guruhlarni topishingiz mumkin.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🌐 Ommaviy quizlar", callback_data="qb:public")],
+                [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
+            ]),
+        )
+        await cb.answer()
+        return
+
+    from keyboards.inline import quiz_group_list_keyboard
+    groups_data = [
+        {"id": str(g.id), "name": g.name, "subscriber_count": g.subscriber_count}
+        for g in groups
+    ]
+    await cb.message.edit_text(
+        "📌 Sizning obunalaringiz:",
+        reply_markup=quiz_group_list_keyboard(groups_data),
+    )
+    await cb.answer()
+
+
 # ─────────────────────────── Ommaviy / Trend ───────────────────────────
 
 @router.callback_query(F.data.in_({"qb:public", "qb:trending", "qb:random"}))
 async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(QuizStates.BROWSING_PUBLIC)
+    mode = cb.data.split(":")[1]
     try:
-        data = await ai_engine_client().get_quizzes()
+        if mode == "trending":
+            data = await ai_engine_client().get_quizzes(tag=None, public=True)
+        elif mode == "random":
+            import random
+            data = await ai_engine_client().get_quizzes(public=True, page_size=20)
+            quizzes_all = data.get("quizzes", data) if isinstance(data, dict) else data
+            if quizzes_all:
+                random.shuffle(quizzes_all)
+                data = {"quizzes": quizzes_all[:5]}
+        else:
+            data = await ai_engine_client().get_quizzes(public=True)
         quizzes = data.get("quizzes", data) if isinstance(data, dict) else data
     except Exception:
         quizzes = []
@@ -270,14 +332,42 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext) -> None:
     correct_indices = q.get("correct_indices", [q.get("correct_index", 0)])
     selected = poll_answer.option_ids
 
-    is_correct = sorted(selected) == sorted(correct_indices)
+    # Vaqt tugasa Telegram [] yuboradi — skip hisoblanadi
+    is_skipped = len(selected) == 0
+    is_correct = not is_skipped and sorted(selected) == sorted(correct_indices)
 
     if is_correct:
-        await state.update_data(correct=data.get("correct", 0) + 1)
+        await state.update_data(
+            correct=data.get("correct", 0) + 1,
+            skip_count=0,
+        )
+    elif is_skipped:
+        skip_count = data.get("skip_count", 0) + 1
+        await state.update_data(
+            skipped=data.get("skipped", 0) + 1,
+            skip_count=skip_count,
+        )
+        # Auto-pause: 2 ta ketma-ket skip
+        if skip_count >= AUTO_PAUSE_SKIP_COUNT:
+            await state.set_state(QuizStates.PAUSED)
+            await state.update_data(skip_count=0)
+            await poll_answer.bot.send_message(
+                poll_answer.user.id,
+                "⏸ Avtomatik pauza!\n"
+                f"{skip_count} ta ketma-ket javob berilmadi.\n\n"
+                "Quizni davom ettirishga tayyormisiz?",
+                reply_markup=pause_quiz_keyboard(),
+            )
+            return
     else:
-        await state.update_data(wrong=data.get("wrong", 0) + 1)
-
-    await state.update_data(skip_count=0)
+        # Noto'g'ri javob — wrong savolni eslab qo'yamiz
+        wrong_q_ids = data.get("wrong_question_ids", [])
+        wrong_q_ids.append(idx)
+        await state.update_data(
+            wrong=data.get("wrong", 0) + 1,
+            skip_count=0,
+            wrong_question_ids=wrong_q_ids,
+        )
 
     # Keyingi savolga o'tish
     await _send_next_question(poll_answer.user.id, state, poll_answer.bot)
@@ -346,6 +436,10 @@ async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> N
 
     score = int((correct / total * 1000)) if total > 0 else 0
 
+    # 100% natija emoji
+    perfect = correct == total and total > 0
+    header = "💯 Mukammal!" if perfect else "🏁 Quiz tugadi!"
+
     # Game servisni tugatish
     xp_earned = 0
     new_achievements = []
@@ -358,7 +452,7 @@ async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> N
             pass
 
     text = (
-        f"🏁 Quiz tugadi!\n\n"
+        f"{header}\n\n"
         f"✅ To'g'ri: {correct}/{total}\n"
         f"❌ Noto'g'ri: {wrong}/{total}\n"
         f"⏭ Javobsiz: {skipped}/{total}\n\n"
@@ -370,9 +464,7 @@ async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> N
         text += f"\n🏅 Yangi yutuq: {', '.join(new_achievements)}"
 
     # Keyingi set bormi?
-    questions = data.get("questions", [])
-    total_questions_in_quiz = data.get("total", len(questions))
-    next_set = set_number + 1 if correct + wrong + skipped >= total_questions_in_quiz else None
+    next_set = set_number + 1 if (correct + wrong + skipped) >= total and total > 0 else None
 
     kb = quiz_result_keyboard(
         quiz_id=quiz_id,
@@ -388,6 +480,87 @@ async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> N
         await bot.send_message(chat_id, text, reply_markup=kb)
 
     await state.clear()
+
+
+# ─────────────────────────── Xatolarni qayta ishlash ───────────────────────────
+
+@router.callback_query(F.data.startswith("qp:retry:"))
+async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
+    """Noto'g'ri javob berilgan savollarni qayta o'ynash."""
+    parts = cb.data.split(":")
+    quiz_id = parts[2]
+    set_number = int(parts[3])
+
+    # Oldingi sessiyada xato savollar indekslarini olish
+    data = await state.get_data()
+    wrong_ids = data.get("wrong_question_ids", [])
+    all_questions = data.get("questions", [])
+
+    if not wrong_ids or not all_questions:
+        # Qaytadan savollarni yuklab olamiz
+        try:
+            all_questions = await ai_engine_client().get_questions(quiz_id, set_number)
+            wrong_ids = list(range(len(all_questions)))  # hammasini retry qilamiz
+        except Exception:
+            await cb.answer("Savollarni yuklab bo'lmadi", show_alert=True)
+            return
+
+    wrong_questions = [all_questions[i] for i in wrong_ids if i < len(all_questions)]
+
+    if not wrong_questions:
+        await cb.answer("Hech qanday xato savol topilmadi", show_alert=True)
+        return
+
+    time_sec = data.get("time_sec", 30)
+
+    await state.set_state(QuizStates.QUIZ_PLAYING)
+    await state.update_data(
+        questions=wrong_questions,
+        total=len(wrong_questions),
+        current_q_index=0,
+        correct=0, wrong=0, skipped=0,
+        skip_count=0,
+        wrong_question_ids=[],
+        quiz_id=quiz_id, set_number=set_number, time_sec=time_sec,
+        is_retry=True,
+    )
+
+    await cb.message.answer(
+        f"🔁 {len(wrong_questions)} ta xato savolni qayta ishlash boshlanadi..."
+    )
+    await cb.answer()
+    await _send_next_question(cb.message.chat.id, state, cb.bot)
+
+
+@router.callback_query(F.data.startswith("qp:show_wrong:"))
+async def show_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
+    """Xato savollarni ro'yxat sifatida ko'rsatish."""
+    data = await state.get_data()
+    wrong_ids = data.get("wrong_question_ids", [])
+    questions = data.get("questions", [])
+
+    if not wrong_ids:
+        await cb.answer("Xato savollar yo'q!", show_alert=True)
+        return
+
+    text = "📊 Xato javob berilgan savollar:\n\n"
+    for i, idx in enumerate(wrong_ids[:10], 1):
+        if idx < len(questions):
+            q = questions[idx]
+            q_text = q.get("question_text", q.get("question", "?"))[:80]
+            text += f"{i}. {q_text}...\n"
+
+    if len(wrong_ids) > 10:
+        text += f"\n...va yana {len(wrong_ids) - 10} ta savol"
+
+    quiz_id = data.get("quiz_id", "")
+    set_number = data.get("set_number", 1)
+
+    await cb.message.answer(
+        text,
+        reply_markup=retry_result_keyboard(quiz_id, set_number, len(wrong_ids)),
+    )
+    await cb.answer()
 
 
 # ─────────────────────────── Qidiruv ───────────────────────────
