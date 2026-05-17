@@ -6,8 +6,8 @@ Bot buyruqlari handlerlari — BOT_UX.md §21
 /cancel   — Bekor qilish
 /quiz     — Tez quiz
 """
-from aiogram import Router
-from aiogram.filters import Command
+from aiogram import F, Router
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -15,6 +15,46 @@ from fsm.states import QuizStates
 from keyboards.main_menu import main_menu_keyboard
 
 router = Router()
+
+# Barcha til variantlari bilan asosiy menyu tugmalari
+_ALL_MENU_BUTTONS = {
+    "▶️ Boshlash", "🔍 Qidirish", "📤 Quiz Yaratish", "🏆 Reyting",
+    "👤 Profil", "👥 Taklif qilish",
+    "▶️ Начать", "🔍 Поиск", "📤 Создать квиз", "🏆 Рейтинг",
+    "👤 Профиль", "👥 Пригласить",
+    "▶️ Start", "🔍 Search", "📤 Create Quiz", "🏆 Leaderboard",
+    "👤 Profile", "👥 Invite",
+}
+
+
+@router.message(~StateFilter(None), F.text.in_(_ALL_MENU_BUTTONS))
+async def menu_button_in_state(message: Message, state: FSMContext) -> None:
+    """
+    FSM state da bo'lganda asosiy menyu tugmasi bosilsa —
+    state tozalanadi va to'g'ri javob beriladi.
+    StateFilter(None) emas — ya'ni faqat state mavjud bo'lganda ishlaydi.
+    """
+    await state.clear()
+    text = message.text
+
+    if text in {"▶️ Boshlash", "▶️ Начать", "▶️ Start"}:
+        from keyboards.inline import quiz_browse_keyboard
+        await message.answer("Qayerdan o'ynaysiz?", reply_markup=quiz_browse_keyboard())
+    elif text in {"🔍 Qidirish", "🔍 Поиск", "🔍 Search"}:
+        await state.set_state(QuizStates.SEARCHING)
+        await message.answer("🔍 Qidiring yoki teg tanlang:\n\nYoki matn yozing...")
+    elif text in {"📤 Quiz Yaratish", "📤 Создать квиз", "📤 Create Quiz"}:
+        from keyboards.inline import upload_menu_keyboard
+        await message.answer("Quiz yaratish usulini tanlang:", reply_markup=upload_menu_keyboard())
+    elif text in {"🏆 Reyting", "🏆 Рейтинг", "🏆 Leaderboard"}:
+        from keyboards.inline import leaderboard_tabs_keyboard
+        await message.answer("🏆 Reyting:", reply_markup=leaderboard_tabs_keyboard())
+    elif text in {"👤 Profil", "👤 Профиль", "👤 Profile"}:
+        from handlers.profile import show_profile
+        await show_profile(message, state)
+    elif text in {"👥 Taklif qilish", "👥 Пригласить", "👥 Invite"}:
+        from handlers.profile import show_referral
+        await show_referral(message, state)
 
 
 @router.message(Command("help"))

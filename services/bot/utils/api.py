@@ -194,18 +194,18 @@ class AIEngineClient:
         mime_type: str = "",
     ) -> dict[str, Any]:
         """
-        POST /tasks
+        POST /process
         Enqueues an AI processing task.
-        Returns {"task_id": "...", "status": "queued"}
+        Returns {"task_id": "...", "status": "processing"}
         """
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             resp = await client.post(
-                f"{self._base}/tasks",
+                f"{self._base}/process",
                 json={
                     "file_url": file_url,
                     "file_name": file_name,
                     "file_size": file_size,
-                    "user_id": user_id,
+                    "user_id": str(user_id),
                     "mime_type": mime_type,
                 },
             )

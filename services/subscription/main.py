@@ -72,40 +72,78 @@ async def health():
 
 @app.get("/limits/check")
 async def check_limit(
-    user_id: str = Query(..., description="UUID formatida user_id"),
+    user_id: Optional[str] = Query(None, description="UUID formatida user_id"),
+    telegram_id: Optional[int] = Query(None, description="Telegram user ID"),
     action: str = Query(..., description="file_upload | quiz_create"),
 ):
     """
     Bot middleware dan chaqiriladi.
-    Limit tekshirish FAQAT shu endpointda bo'ladi.
+    user_id (UUID) yoki telegram_id orqali chaqirish mumkin.
     """
+    resolved_user_id = user_id
+
+    # telegram_id bo'yicha UUID topish
+    if not resolved_user_id and telegram_id:
+        try:
+            from sqlalchemy import text
+            async with AsyncSessionLocal() as session:
+                row = await session.execute(
+                    text("SELECT id FROM users WHERE telegram_id = :tid"),
+                    {"tid": telegram_id},
+                )
+                rec = row.fetchone()
+                resolved_user_id = str(rec[0]) if rec else None
+        except Exception as e:
+            logger.warning("telegram_id → UUID xatosi: %s", e)
+
+    if not resolved_user_id:
+        # Foydalanuvchi hali DB da yo'q (yangi) — ruxsat beriladi
+        return {"allowed": True, "limit": 3, "used": 0, "plan": "free"}
+
     async with AsyncSessionLocal() as session:
         try:
             result = await limit_checker.check(
                 session=session,
                 redis=redis_client,
-                user_id=user_id,
+                user_id=resolved_user_id,
                 action=action,
             )
             return result
         except Exception as e:
             logger.error("Limit tekshirish xatosi: %s", e)
-            # Fail-open: xizmat ishlamasa ruxsat beriladi
             return {"allowed": True, "limit": None, "used": 0, "plan": "free"}
 
 
 @app.post("/limits/increment")
 async def increment_usage(
-    user_id: str = Query(...),
+    user_id: Optional[str] = Query(None),
+    telegram_id: Optional[int] = Query(None),
     action: str = Query(...),
 ):
     """Foydalanish sonini oshiradi (fayl yuklangandan keyin chaqiriladi)"""
+    resolved_user_id = user_id
+    if not resolved_user_id and telegram_id:
+        try:
+            from sqlalchemy import text
+            async with AsyncSessionLocal() as session:
+                row = await session.execute(
+                    text("SELECT id FROM users WHERE telegram_id = :tid"),
+                    {"tid": telegram_id},
+                )
+                rec = row.fetchone()
+                resolved_user_id = str(rec[0]) if rec else None
+        except Exception as e:
+            logger.warning("telegram_id → UUID xatosi: %s", e)
+
+    if not resolved_user_id:
+        return {"success": True}
+
     async with AsyncSessionLocal() as session:
         try:
             await limit_checker.increment(
                 session=session,
                 redis=redis_client,
-                user_id=user_id,
+                user_id=resolved_user_id,
                 action=action,
             )
             await session.commit()

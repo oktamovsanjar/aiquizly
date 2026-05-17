@@ -16,7 +16,13 @@ logger = logging.getLogger(__name__)
 
 class AIStructurer:
     def __init__(self) -> None:
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        if settings.ai_provider == "deepseek" and settings.deepseek_api_key:
+            self.client = AsyncOpenAI(
+                api_key=settings.deepseek_api_key,
+                base_url=settings.deepseek_base_url,
+            )
+        else:
+            self.client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     async def structure_blocks(self, blocks: List[QuestionBlock]) -> List[Dict[str, Any]]:
         """
@@ -48,11 +54,13 @@ class AIStructurer:
         for attempt in range(settings.ai_max_retries):
             try:
                 model = settings.ai_model_primary if attempt == 0 else settings.ai_model_fallback
+                # DeepSeek va ba'zi modellar json_object formatini qo'llab-quvvatlaydi
+                supports_json_format = "gpt-4" in model or "deepseek" in model
                 response = await self.client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
-                    response_format={"type": "json_object"} if "gpt-4" in model else None,
+                    response_format={"type": "json_object"} if supports_json_format else None,
                 )
                 raw = response.choices[0].message.content
                 questions = self._parse_response(raw)

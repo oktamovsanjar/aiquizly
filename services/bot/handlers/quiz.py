@@ -587,7 +587,17 @@ async def search_menu(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(QuizStates.SEARCHING)
+_MENU_BUTTONS = {
+    "▶️ Boshlash", "🔍 Qidirish", "📤 Quiz Yaratish", "🏆 Reyting",
+    "👤 Profil", "👥 Taklif qilish",
+    "▶️ Начать", "🔍 Поиск", "📤 Создать квиз", "🏆 Рейтинг",
+    "👤 Профиль", "👥 Пригласить",
+    "▶️ Start", "🔍 Search", "📤 Create Quiz", "🏆 Leaderboard",
+    "👤 Profile", "👥 Invite",
+}
+
+
+@router.message(QuizStates.SEARCHING, ~F.text.in_(_MENU_BUTTONS))
 async def handle_search(message: Message, state: FSMContext) -> None:
     query = message.text.strip()
     tag = None

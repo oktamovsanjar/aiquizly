@@ -9,9 +9,14 @@ class Settings(BaseSettings):
     ai_engine_port: int = int(os.getenv("AI_ENGINE_PORT", "8002"))
     log_level: str = os.getenv("LOG_LEVEL", "info")
 
+    # AI provider: "openai" | "deepseek"
+    ai_provider: str = os.getenv("AI_PROVIDER", "openai")
+    deepseek_api_key: str = os.environ.get("DEEPSEEK_API_KEY", "")
+    deepseek_base_url: str = "https://api.deepseek.com"
+
     # AI sozlamalari
-    ai_model_primary: str = "gpt-4o-mini"
-    ai_model_fallback: str = "gpt-4o"
+    ai_model_primary: str = os.getenv("AI_MODEL_PRIMARY", "gpt-4o-mini")
+    ai_model_fallback: str = os.getenv("AI_MODEL_FALLBACK", "gpt-4o")
     ai_batch_size: int = 15
     ai_max_retries: int = 3
 
