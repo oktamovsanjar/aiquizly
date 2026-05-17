@@ -61,6 +61,7 @@ async def _process_file_async(
 ) -> Dict[str, Any]:
     from parsers import detect_format, parse_word, parse_pdf, parse_excel, parse_text
     from boundary import detect_boundaries
+    from boundary.splitter import QuestionBlock
     from ai import AIStructurer, validate_questions
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
@@ -106,12 +107,22 @@ async def _process_file_async(
             raise ValueError(f"Qo'llab-quvvatlanmaydigan format: {file_format}")
 
         if not blocks:
-            result = {"total_questions": 0, "total_sets": 0, "questions": []}
-            await _save_to_db(
-                AsyncSessionLocal, result, user_id, file_name, file_hash,
-                import_log_id, quiz_group_id, tags, start_time,
-            )
-            return result
+            # Boundary detection topamdi — butun matnni AI ga beramiz
+            # AI o'zi formatni aniqlab savollarni ajratsin
+            if raw_text and raw_text.strip():
+                logger.info("Boundary topilmadi, matn to'liq AI ga beriladi")
+                blocks = [QuestionBlock(
+                    question="",
+                    options=[],
+                    raw_text=raw_text[:12000],  # max token limit
+                )]
+            else:
+                result = {"total_questions": 0, "total_sets": 0, "questions": []}
+                await _save_to_db(
+                    AsyncSessionLocal, result, user_id, file_name, file_hash,
+                    import_log_id, quiz_group_id, tags, start_time,
+                )
+                return result
 
         # Stage 3-4: AI strukturalash (batch, parallel)
         structurer = AIStructurer()

@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
 
     # AI sozlamalari
-    ai_model_primary: str = os.getenv("AI_MODEL_PRIMARY", "gpt-4o-mini")
-    ai_model_fallback: str = os.getenv("AI_MODEL_FALLBACK", "gpt-4o")
+    ai_model_primary: str = os.getenv("AI_MODEL_PRIMARY", "deepseek-v4-flash")
+    ai_model_fallback: str = os.getenv("AI_MODEL_FALLBACK", "deepseek-v4-pro")
     ai_batch_size: int = 15
     ai_max_retries: int = 3
 
