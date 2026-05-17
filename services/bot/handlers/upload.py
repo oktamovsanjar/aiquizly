@@ -23,6 +23,7 @@ from aiogram.types import (
 
 from fsm.states import QuizStates
 from utils.api import ai_engine_client
+from utils.i18n import t
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -56,36 +57,39 @@ def _save_keyboard(quiz_name: str) -> InlineKeyboardMarkup:
     ])
 
 
+async def _get_lang(state: FSMContext) -> str:
+    data = await state.get_data()
+    return data.get("language_code", "uz")
+
+
 # ─────────────────────── Quiz yaratish menyu ───────────────────────
 
-@router.message(F.text == "📤 Quiz Yaratish")
+@router.message(F.text.in_({"📤 Quiz Yaratish", "📤 Создать квиз", "📤 Create Quiz"}))
 @router.message(Command("create"))
 async def quiz_create_menu(message: Message, state: FSMContext) -> None:
+    lang = await _get_lang(state)
     await state.set_state(QuizStates.FILE_UPLOAD)
     await message.answer(
-        "Quiz yaratish usulini tanlang:",
+        t("upload_select_method", lang),
         reply_markup=_create_keyboard(),
     )
 
 
 @router.callback_query(F.data == "up:file")
 async def cb_file_upload(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _get_lang(state)
     await state.set_state(QuizStates.FILE_UPLOAD)
-    await callback.message.edit_text(
-        "📄 Faylni yuboring.\n"
-        "(.docx, .pdf, .xlsx, .txt — max 10 MB)"
-    )
+    await callback.message.edit_text(t("upload_send_file", lang))
     await callback.answer()
 
 
 @router.callback_query(F.data == "up:image")
 async def cb_image_upload(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _get_lang(state)
     await state.set_state(QuizStates.IMAGE_UPLOAD)
     await state.update_data(image_file_ids=[])
     await callback.message.edit_text(
-        "📷 Test rasmlarini yuboring.\n"
-        "Bir nechta rasm yuborishingiz mumkin.\n"
-        'Tayyor bo\'lgach <b>"✅ Tamom"</b> bosing.',
+        t("upload_send_image", lang),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Tamom", callback_data="up:images_done")]
         ]),
@@ -107,17 +111,15 @@ async def cb_manual(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(F.document)
 async def handle_document(message: Message, state: FSMContext) -> None:
+    lang = await _get_lang(state)
     doc: Document = message.document
 
     if doc.file_size > MAX_FILE_SIZE:
-        await message.answer("❌ Fayl hajmi 10 MB dan oshmasligi kerak.")
+        await message.answer(t("upload_file_too_large", lang))
         return
 
     if doc.mime_type not in ALLOWED_MIME_TYPES:
-        await message.answer(
-            "❌ Faqat quyidagi formatlar qabul qilinadi:\n"
-            ".docx, .pdf, .xlsx, .txt"
-        )
+        await message.answer(t("upload_wrong_format", lang))
         return
 
     progress_msg = await message.answer(
@@ -168,9 +170,7 @@ async def handle_document(message: Message, state: FSMContext) -> None:
 
     except Exception as e:
         logger.error("Fayl yuklash xatosi: %s", e)
-        await progress_msg.edit_text(
-            "❌ Fayl qayta ishlanmadi. Keyinroq urinib ko'ring."
-        )
+        await progress_msg.edit_text(t("upload_error", lang))
         await state.clear()
 
 
@@ -263,9 +263,10 @@ async def cb_save_quiz(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "up:retry")
 async def cb_retry(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _get_lang(state)
     await state.set_state(QuizStates.FILE_UPLOAD)
     await callback.message.edit_text(
-        "Quiz yaratish usulini tanlang:",
+        t("upload_select_method", lang),
         reply_markup=_create_keyboard(),
     )
     await callback.answer()

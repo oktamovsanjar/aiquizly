@@ -2,6 +2,7 @@ import uuid as uuid_mod
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy import select, update
 
@@ -9,6 +10,7 @@ from db import AsyncSessionLocal
 from db.models import Referral, User
 from keyboards.main_menu import main_menu_keyboard
 from keyboards.language import language_keyboard
+from utils.i18n import t
 
 router = Router()
 
@@ -129,36 +131,57 @@ async def cmd_start_referral(message: Message) -> None:
     referrer_name = await _process_referral(user, referrer_tg_id)
 
     bonus_text = ""
+    lang = message.from_user.language_code or "uz"
+    if lang not in ("uz", "ru", "en"):
+        lang = "uz"
     if referrer_name:
-        bonus_text = (
-            f"\n\n🎁 <b>{referrer_name}</b> taklifi orqali keldingiz!\n"
-            f"Siz: <b>+{REFERRAL_XP_REFERRED} XP</b> bonus oldingiz!"
-        )
+        bonus_text = t("referral_bonus", lang, name=referrer_name, xp=REFERRAL_XP_REFERRED)
 
     await message.answer(
-        f"Quiz Bot ga xush kelibsiz!{bonus_text}\n\n"
-        "Tilni tanlang:",
+        t("welcome_new", lang) + bonus_text,
         reply_markup=language_keyboard(),
     )
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message) -> None:
-    """Birinchi kirish — foydalanuvchini ro'yxatdan o'tkazish va til tanlash"""
-    await _upsert_user(message)
+async def cmd_start(message: Message, state: FSMContext) -> None:
+    """Birinchi kirish yoki qayta kirish."""
+    user = await _upsert_user(message)
+
+    # Foydalanuvchi allaqachon ro'yxatdan o'tgan bo'lsa — menyu ko'rsat
+    if _is_returning_user(user):
+        lang = user.language_code or "uz"
+        # FSM state ga tilni saqlash
+        await state.update_data(language_code=lang)
+        await message.answer(
+            _welcome_back_text(lang, message.from_user.first_name),
+            reply_markup=main_menu_keyboard(lang),
+        )
+        return
+
+    lang = message.from_user.language_code or "uz"
+    if lang not in ("uz", "ru", "en"):
+        lang = "uz"
     await message.answer(
-        "Quiz Bot ga xush kelibsiz!\n\n"
-        "Bu bot orqali:\n"
-        "• Tayyor quizlarni yechishingiz\n"
-        "• O'z testlaringizni yaratishingiz\n"
-        "• Do'stlar bilan bellashishingiz mumkin\n\n"
-        "Tilni tanlang:",
+        t("welcome_new", lang),
         reply_markup=language_keyboard(),
     )
 
 
+def _is_returning_user(user) -> bool:
+    """Foydalanuvchi avval ham kirgan (created_at va updated_at farqli)."""
+    try:
+        return user.updated_at != user.created_at
+    except Exception:
+        return False
+
+
+def _welcome_back_text(lang: str, name: str | None) -> str:
+    return t("welcome_back", lang, name=name or "")
+
+
 @router.message(F.text.in_({"O'zbek", "Русский", "English"}))
-async def choose_language(message: Message) -> None:
+async def choose_language(message: Message, state: FSMContext) -> None:
     """Til tanlangandan keyin asosiy menyu"""
     lang_map = {"O'zbek": "uz", "Русский": "ru", "English": "en"}
     lang = lang_map.get(message.text, "uz")
@@ -172,7 +195,10 @@ async def choose_language(message: Message) -> None:
         )
         await session.commit()
 
+    # FSM state ga ham saqlash — boshqa handlerlar uchun
+    await state.update_data(language_code=lang)
+
     await message.answer(
-        "Asosiy menyu:",
+        t("language_saved", lang),
         reply_markup=main_menu_keyboard(lang),
     )

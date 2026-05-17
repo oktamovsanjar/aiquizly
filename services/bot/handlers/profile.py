@@ -1,13 +1,17 @@
 """Profil, reyting va referal handlerlari."""
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup,
+    LabeledPrice, PreCheckoutQuery,
+)
 
 from keyboards.inline import (
     profile_keyboard, leaderboard_tabs_keyboard,
     referral_keyboard, premium_plans_keyboard, payment_keyboard,
 )
 from utils.api import game_client, subscription_client
+from utils.i18n import t
 
 router = Router()
 
@@ -134,17 +138,24 @@ async def show_detail_stats(cb: CallbackQuery) -> None:
 @router.message(F.text.in_({"💎 Obuna", "💎 Premium"}))
 @router.callback_query(F.data == "prof:premium")
 async def show_premium(event) -> None:
-    text = (
-        "💎 <b>Premium rejalar</b>\n\n"
-        "📅 <b>Oylik</b> — 29 000 so'm\n"
-        "📆 <b>Yillik</b> — 249 000 so'm (29% tejash)\n\n"
-        "Premium bilan:\n"
-        "• Cheksiz fayl yuklash\n"
-        "• Guruhga ulashish\n"
-        "• Quiz doim saqlanadi\n"
-        "• Batafsil statistika\n\n"
-        "Yoki 3 ta do'st taklif qiling = 9 kun bepul!"
-    )
+    lang = "uz"
+    if isinstance(event, CallbackQuery):
+        # Try to get lang from DB or default
+        try:
+            from db import AsyncSessionLocal
+            from db.models import User
+            from sqlalchemy import select
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(User).where(User.telegram_id == event.from_user.id)
+                )
+                user = result.scalar_one_or_none()
+                if user:
+                    lang = user.language_code or "uz"
+        except Exception:
+            pass
+
+    text = t("premium_description", lang)
 
     if isinstance(event, CallbackQuery):
         await event.message.edit_text(text, reply_markup=premium_plans_keyboard())
@@ -155,22 +166,96 @@ async def show_premium(event) -> None:
 
 @router.callback_query(F.data.in_({"pay:monthly", "pay:yearly"}))
 async def show_payment_options(cb: CallbackQuery) -> None:
-    period = "Oylik" if cb.data == "pay:monthly" else "Yillik"
-    price = "29 000 so'm" if cb.data == "pay:monthly" else "249 000 so'm"
+    period = "monthly" if cb.data == "pay:monthly" else "yearly"
+    period_uz = "Oylik" if period == "monthly" else "Yillik"
+    price = "29 000 so'm" if period == "monthly" else "249 000 so'm"
     await cb.message.edit_text(
-        f"💳 <b>{period} — {price}</b>\n\n"
+        f"💳 <b>{period_uz} — {price}</b>\n\n"
         "To'lov usulini tanlang:",
-        reply_markup=payment_keyboard(),
+        reply_markup=payment_keyboard(period),
     )
     await cb.answer()
 
 
-@router.callback_query(F.data == "pay:stars")
+# Telegram Stars narxlari (1 USD ≈ 50 Stars)
+_STARS_PRICES = {
+    "monthly": 150,   # ~3 USD
+    "yearly": 1200,   # ~24 USD
+}
+_PLAN_DAYS = {
+    "monthly": 30,
+    "yearly": 365,
+}
+
+
+@router.callback_query(F.data.startswith("pay:stars:"))
 async def pay_with_stars(cb: CallbackQuery) -> None:
-    await cb.answer(
-        "⭐ Telegram Stars to'lov tez orada qo'shiladi!",
-        show_alert=True,
+    """Telegram Stars orqali to'lov invoice yuborish."""
+    period = cb.data.split(":")[2]  # "monthly" yoki "yearly"
+    stars = _STARS_PRICES.get(period, 150)
+    period_uz = "Oylik" if period == "monthly" else "Yillik"
+
+    await cb.message.answer_invoice(
+        title=f"💎 Premium — {period_uz}",
+        description=(
+            f"Quiz Bot Premium obuna ({period_uz})\n"
+            "✅ Cheksiz fayl yuklash\n"
+            "✅ Guruhga ulashish\n"
+            "✅ Batafsil statistika"
+        ),
+        payload=f"premium:{period}:{cb.from_user.id}",
+        currency="XTR",
+        prices=[LabeledPrice(label=f"Premium {period_uz}", amount=stars)],
     )
+    await cb.answer()
+
+
+@router.pre_checkout_query()
+async def process_pre_checkout(query: PreCheckoutQuery) -> None:
+    """Telegram Stars to'lovdan oldin tasdiqlash."""
+    await query.answer(ok=True)
+
+
+@router.message(F.successful_payment)
+async def payment_successful(message: Message) -> None:
+    """Muvaffaqiyatli to'lovdan keyin premium yoqish."""
+    payload = message.successful_payment.invoice_payload
+    # payload format: "premium:monthly:telegram_id" yoki "premium:yearly:telegram_id"
+    parts = payload.split(":")
+    if len(parts) >= 2:
+        period = parts[1]
+        days = _PLAN_DAYS.get(period, 30)
+
+        try:
+            from utils.api import subscription_client
+            await subscription_client().activate_premium(
+                user_id=message.from_user.id,
+                days=days,
+                source="stars",
+            )
+        except Exception:
+            pass
+
+    # Try to get user language
+    lang = "uz"
+    try:
+        from db import AsyncSessionLocal
+        from db.models import User as _User
+        from sqlalchemy import select as _select
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                _select(_User).where(_User.telegram_id == message.from_user.id)
+            )
+            u = result.scalar_one_or_none()
+            if u:
+                lang = u.language_code or "uz"
+    except Exception:
+        pass
+
+    period_labels = {"monthly": {"uz": "oylik", "ru": "ежемесячный", "en": "monthly"},
+                     "yearly": {"uz": "yillik", "ru": "годовой", "en": "yearly"}}
+    period_label = period_labels.get(period, {}).get(lang, period)
+    await message.answer(t("payment_success", lang, period=period_label))
 
 
 @router.callback_query(F.data == "pay:close")
@@ -239,19 +324,29 @@ async def _send_leaderboard(message: Message, period: str, edit: bool = False) -
 # ─────────────────────────── Referal ───────────────────────────
 
 @router.message(Command("invite"))
-@router.message(F.text.in_({"👥 Taklif qilish", "👥 Invite"}))
+@router.message(F.text.in_({"👥 Taklif qilish", "👥 Пригласить", "👥 Invite"}))
 async def show_referral(message: Message) -> None:
     user_id = message.from_user.id
     bot_info = await message.bot.get_me()
     bot_username = bot_info.username
 
+    # Get user language
+    lang = "uz"
+    try:
+        from db import AsyncSessionLocal
+        from db.models import User
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalar_one_or_none()
+            if user:
+                lang = user.language_code or "uz"
+    except Exception:
+        pass
+
     text = (
-        f"👥 <b>Do'stlaringizni taklif qiling!</b>\n\n"
-        f"Sizning link:\n"
-        f"t.me/{bot_username}?start=ref_{user_id}\n\n"
-        f"Har bir taklif uchun:\n"
-        f"├── Siz: +50 XP + 3 kun premium\n"
-        f"└── Do'st: +20 XP bonus"
+        t("referral_description", lang)
+        + f"\n<code>https://t.me/{bot_username}?start=ref_{user_id}</code>"
     )
 
     await message.answer(text, reply_markup=referral_keyboard(bot_username, user_id))
@@ -268,9 +363,23 @@ async def copy_referral_link(cb: CallbackQuery) -> None:
 async def referral_via_callback(cb: CallbackQuery) -> None:
     bot_info = await cb.bot.get_me()
     user_id = cb.from_user.id
-    await cb.message.edit_text(
-        f"👥 <b>Do'stlaringizni taklif qiling!</b>\n\n"
-        f"Har bir taklif uchun: +50 XP + 3 kun premium",
-        reply_markup=referral_keyboard(bot_info.username, user_id),
+
+    lang = "uz"
+    try:
+        from db import AsyncSessionLocal
+        from db.models import User
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalar_one_or_none()
+            if user:
+                lang = user.language_code or "uz"
+    except Exception:
+        pass
+
+    text = (
+        t("referral_description", lang)
+        + f"\n<code>https://t.me/{bot_info.username}?start=ref_{user_id}</code>"
     )
+    await cb.message.edit_text(text, reply_markup=referral_keyboard(bot_info.username, user_id))
     await cb.answer()

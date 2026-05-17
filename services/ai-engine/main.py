@@ -107,13 +107,35 @@ async def process_file(req: ProcessRequest):
                 "quiz_id": str(existing.quiz_id) if existing.quiz_id else None,
             }
 
+        # user_id ni telegram_id dan UUID ga resolve qilish
+        import uuid as _uuid
+        import sqlalchemy as _sa
+        resolved_user_id = req.user_id
+        # Agar telegram_id raqam bo'lsa (UUID emas) — users jadvalidan UUID topamiz
+        try:
+            _uuid.UUID(req.user_id)
+        except (ValueError, AttributeError):
+            try:
+                tg_int = int(req.user_id)
+                row = await session.execute(
+                    _sa.text("SELECT id FROM users WHERE telegram_id = :tid"),
+                    {"tid": tg_int},
+                )
+                row_one = row.fetchone()
+                if row_one:
+                    resolved_user_id = str(row_one[0])
+                else:
+                    resolved_user_id = None
+            except Exception:
+                resolved_user_id = None
+
         # Import log yaratish
         from db.queries import create_import_log
         import os
         file_ext = os.path.splitext(req.file_name)[1].lstrip(".")
         import_log = await create_import_log(
             session=session,
-            user_id=req.user_id,
+            user_id=resolved_user_id,
             file_name=req.file_name,
             file_hash=file_hash,
             file_size=req.file_size,

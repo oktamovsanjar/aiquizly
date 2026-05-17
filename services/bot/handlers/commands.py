@@ -13,6 +13,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from fsm.states import QuizStates
 from keyboards.main_menu import main_menu_keyboard
+from utils.i18n import t
 
 router = Router()
 
@@ -54,7 +55,7 @@ async def menu_button_in_state(message: Message, state: FSMContext) -> None:
         await show_profile(message, state)
     elif text in {"👥 Taklif qilish", "👥 Пригласить", "👥 Invite"}:
         from handlers.profile import show_referral
-        await show_referral(message, state)
+        await show_referral(message)
 
 
 @router.message(Command("help"))
@@ -114,14 +115,16 @@ async def cmd_settings(message: Message, state: FSMContext) -> None:
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
+    data = await state.get_data()
+    lang = data.get("language_code", "uz")
     if current is None:
-        await message.answer("Bekor qilish uchun hech narsa yo'q.")
+        await message.answer(t("nothing_to_cancel", lang))
         return
 
     await state.clear()
     await message.answer(
-        "✅ Amal bekor qilindi.",
-        reply_markup=main_menu_keyboard("uz"),
+        t("action_cancelled", lang),
+        reply_markup=main_menu_keyboard(lang),
     )
 
 

@@ -334,9 +334,9 @@ def leaderboard_tabs_keyboard(active_tab: str = "all", tag: str | None = None) -
 # ──────────────────────────── Payment ────────────────────────────
 
 
-def payment_keyboard() -> InlineKeyboardMarkup:
+def payment_keyboard(period: str = "monthly") -> InlineKeyboardMarkup:
     return _kb(
-        [InlineKeyboardButton(text="⭐ Telegram Stars bilan to'lash", callback_data="pay:stars")],
+        [InlineKeyboardButton(text="⭐ Telegram Stars bilan to'lash", callback_data=f"pay:stars:{period}")],
         [InlineKeyboardButton(text="👥 Do'st taklif qilib yutish", callback_data="ref:invite")],
         [InlineKeyboardButton(text="❌ Yopish", callback_data="pay:close")],
     )

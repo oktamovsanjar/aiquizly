@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_questions_sort ON questions(quiz_id, sort_order);
 
 CREATE TABLE IF NOT EXISTS import_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID REFERENCES users(id),
     quiz_id UUID REFERENCES quizzes(id),
     file_name VARCHAR(500) NOT NULL,
     file_hash VARCHAR(64) NOT NULL,

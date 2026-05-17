@@ -23,6 +23,7 @@ _AIOGRAM_TYPES = [
     "ContentType", "BotCommand", "ChatMember", "Chat",
     "ReplyKeyboardRemove", "ForceReply", "Animation", "Audio", "Video",
     "Voice", "Sticker", "Location", "Contact", "Venue",
+    "LabeledPrice", "PreCheckoutQuery", "SuccessfulPayment",
 ]
 
 class _TransitionSentinel:

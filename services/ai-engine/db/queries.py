@@ -17,7 +17,7 @@ from .models import ImportLog, Question, Quiz, QuizSet, QuizTag, Tag
 
 async def create_import_log(
     session: AsyncSession,
-    user_id: str,
+    user_id: Optional[str],
     file_name: str,
     file_hash: str,
     file_size: int,
@@ -25,7 +25,7 @@ async def create_import_log(
 ) -> ImportLog:
     """Creates a new import_log record with status='processing'."""
     log = ImportLog(
-        user_id=uuid.UUID(user_id),
+        user_id=uuid.UUID(user_id) if user_id else None,
         file_name=file_name,
         file_hash=file_hash,
         file_size=file_size,
