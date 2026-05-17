@@ -167,11 +167,33 @@ async def show_premium(event) -> None:
 @router.callback_query(F.data.in_({"pay:monthly", "pay:yearly"}))
 async def show_payment_options(cb: CallbackQuery) -> None:
     period = "monthly" if cb.data == "pay:monthly" else "yearly"
-    period_uz = "Oylik" if period == "monthly" else "Yillik"
-    price = "29 000 so'm" if period == "monthly" else "249 000 so'm"
+    # Get user language
+    lang = "uz"
+    try:
+        from db import AsyncSessionLocal
+        from db.models import User
+        from sqlalchemy import select
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == cb.from_user.id)
+            )
+            user = result.scalar_one_or_none()
+            if user:
+                lang = user.language_code or "uz"
+    except Exception:
+        pass
+    period_labels = {
+        "monthly": {"uz": "Oylik", "ru": "Ежемесячный", "en": "Monthly"},
+        "yearly": {"uz": "Yillik", "ru": "Годовой", "en": "Yearly"},
+    }
+    price_labels = {
+        "monthly": {"uz": "29 000 so'm", "ru": "29 000 сум", "en": "29 000 UZS"},
+        "yearly": {"uz": "249 000 so'm", "ru": "249 000 сум", "en": "249 000 UZS"},
+    }
+    period_label = period_labels.get(period, {}).get(lang, period)
+    price_label = price_labels.get(period, {}).get(lang, "")
     await cb.message.edit_text(
-        f"💳 <b>{period_uz} — {price}</b>\n\n"
-        "To'lov usulini tanlang:",
+        t("payment_select", lang, period=period_label, price=price_label),
         reply_markup=payment_keyboard(period),
     )
     await cb.answer()
@@ -288,6 +310,23 @@ async def _send_leaderboard(message: Message, period: str, edit: bool = False) -
     }
     api_period, _ = period_map.get(period, ("alltime", None))
 
+    # Get user language
+    lang = "uz"
+    try:
+        if hasattr(message, "from_user") and message.from_user:
+            from db import AsyncSessionLocal
+            from db.models import User
+            from sqlalchemy import select
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(User).where(User.telegram_id == message.from_user.id)
+                )
+                user = result.scalar_one_or_none()
+                if user:
+                    lang = user.language_code or "uz"
+    except Exception:
+        pass
+
     try:
         data = await game_client().get_leaderboard(period=api_period, limit=10)
         entries = data.get("entries", [])
@@ -295,14 +334,10 @@ async def _send_leaderboard(message: Message, period: str, edit: bool = False) -
         entries = []
 
     if not entries:
-        text = (
-            "🏆 <b>Reyting</b>\n\n"
-            "Hozircha ma'lumot yo'q.\n"
-            "Quiz o'ynang va reytingga kiring!"
-        )
+        text = t("leaderboard_title", lang) + "\n\n" + t("leaderboard_empty", lang)
     else:
         medals = ["🥇", "🥈", "🥉"]
-        lines = ["🏆 <b>Reyting</b>\n"]
+        lines = [t("leaderboard_title", lang) + "\n"]
         for i, e in enumerate(entries[:10]):
             medal = medals[i] if i < 3 else f"{i + 1}."
             user_id = e.get("user_id", "")

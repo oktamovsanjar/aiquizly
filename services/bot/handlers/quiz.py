@@ -16,6 +16,7 @@ from keyboards.inline import (
     subscribe_group_keyboard,
 )
 from utils.api import ai_engine_client, game_client
+from utils.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +32,21 @@ router = Router()
 @router.message(Command("quiz"))
 async def quiz_start_menu(message: Message, state: FSMContext) -> None:
     await state.set_state(QuizStates.BROWSING_MY_QUIZZES)
+    data = await state.get_data()
+    lang = data.get("language_code", "uz")
     await message.answer(
-        "Qayerdan o'ynaysiz?",
+        t("quiz_select_mode", lang),
         reply_markup=quiz_browse_keyboard(),
     )
 
 
 @router.callback_query(F.data == "qb:menu")
 async def back_to_menu(cb: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    lang = data.get("language_code", "uz")
     await state.clear()
     await cb.message.edit_text(
-        "Qayerdan o'ynaysiz?",
+        t("quiz_select_mode", lang),
         reply_markup=quiz_browse_keyboard(),
     )
     await cb.answer()
@@ -201,9 +206,11 @@ async def select_set(cb: CallbackQuery, state: FSMContext) -> None:
 
     await state.update_data(quiz_id=quiz_id, set_number=set_number, time_sec=30)
     await state.set_state(QuizStates.QUIZ_SETUP)
+    data = await state.get_data()
+    lang = data.get("language_code", "uz")
 
     await cb.message.edit_text(
-        f"⏱ Har bir savol uchun vaqt:\n\n💡 Tavsiya: 30 soniya",
+        t("quiz_select_time", lang),
         reply_markup=time_select_keyboard(quiz_id, set_number),
     )
     await cb.answer()
@@ -351,11 +358,10 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext) -> None:
         if skip_count >= AUTO_PAUSE_SKIP_COUNT:
             await state.set_state(QuizStates.PAUSED)
             await state.update_data(skip_count=0)
+            lang = data.get("language_code", "uz")
             await poll_answer.bot.send_message(
                 poll_answer.user.id,
-                "⏸ Avtomatik pauza!\n"
-                f"{skip_count} ta ketma-ket javob berilmadi.\n\n"
-                "Quizni davom ettirishga tayyormisiz?",
+                t("quiz_paused", lang),
                 reply_markup=pause_quiz_keyboard(),
             )
             return
@@ -437,8 +443,9 @@ async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> N
     score = int((correct / total * 1000)) if total > 0 else 0
 
     # 100% natija emoji
+    lang = data.get("language_code", "uz")
     perfect = correct == total and total > 0
-    header = "💯 Mukammal!" if perfect else "🏁 Quiz tugadi!"
+    header = "💯 Mukammal!" if perfect else t("quiz_completed", lang)
 
     # Game servisni tugatish
     xp_earned = 0
@@ -568,6 +575,8 @@ async def show_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
 @router.message(F.text.in_({"🔍 Qidirish", "🔍 Search", "🔍 Поиск"}))
 async def search_menu(message: Message, state: FSMContext) -> None:
     await state.set_state(QuizStates.SEARCHING)
+    data = await state.get_data()
+    lang = data.get("language_code", "uz")
     try:
         tags_data = await ai_engine_client().get_trending_tags(limit=9)
         if isinstance(tags_data, list) and tags_data and isinstance(tags_data[0], dict):
@@ -581,9 +590,7 @@ async def search_menu(message: Message, state: FSMContext) -> None:
 
     tags_text = "  ".join(tag_names)
     await message.answer(
-        f"🔍 Qidiring yoki teg tanlang:\n\n"
-        f"Trenddagi teglar:\n{tags_text}\n\n"
-        "Yoki matn yozing..."
+        t("quiz_search_prompt", lang) + f"\n\n{tags_text}"
     )
 
 
@@ -605,6 +612,9 @@ async def handle_search(message: Message, state: FSMContext) -> None:
         tag = query.lstrip("#").lower()
         query = None
 
+    fsm_data = await state.get_data()
+    lang = fsm_data.get("language_code", "uz")
+
     try:
         data = await ai_engine_client().get_quizzes(search=query, tag=tag)
         quizzes = data.get("quizzes", data) if isinstance(data, dict) else data
@@ -612,10 +622,7 @@ async def handle_search(message: Message, state: FSMContext) -> None:
         quizzes = []
 
     if not quizzes:
-        await message.answer(
-            f"🔍 '{message.text}' bo'yicha natija topilmadi.\n"
-            "Boshqa so'z bilan qidiring.",
-        )
+        await message.answer(t("quiz_not_found", lang))
         return
 
     await message.answer(
