@@ -7,10 +7,12 @@ from .upload import router as upload_router
 from .manual import router as manual_router
 from .group import router as group_router
 from .profile import router as profile_router
+from .tg_group import router as tg_group_router
 
 router = Router()
 router.include_router(start_router)
 router.include_router(commands_router)
+router.include_router(tg_group_router)
 router.include_router(group_router)
 router.include_router(quiz_router)
 router.include_router(upload_router)
