@@ -1,15 +1,15 @@
 """
 Upload handlers: fayl va rasm yuborish orqali quiz yaratish.
 
-BOT_UX.md §6 talablariga muvofiq:
+BOT_UX.md §6:
   §6.1 — Fayl yuklash (.docx/.pdf/.xlsx/.txt)
-  §6.3 — Rasm yuborish (multi-image, Vision pipeline)
+  §6.3 — Rasm yuborish
 """
+import asyncio
 import logging
 import os
-from typing import Any
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -22,21 +22,22 @@ from aiogram.types import (
 )
 
 from fsm.states import QuizStates
+from keyboards.main_menu import main_menu_keyboard
 from utils.api import ai_engine_client
 from utils.i18n import t
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-AI_ENGINE_URL = os.getenv("AI_ENGINE_URL", "http://ai-engine:8002")
 ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "text/plain",
 }
-ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+POLL_INTERVAL = 4       # sekund
+POLL_TIMEOUT  = 300     # 5 daqiqa
 
 
 def _create_keyboard() -> InlineKeyboardMarkup:
@@ -46,19 +47,73 @@ def _create_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def _save_keyboard(quiz_name: str) -> InlineKeyboardMarkup:
+def _done_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Saqlash", callback_data="up:save"),
-            InlineKeyboardButton(text="👁 Ko'rib chiqish", callback_data="up:preview"),
-        ],
-        [InlineKeyboardButton(text="🔁 Qayta yuklash", callback_data="up:retry")],
+        [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:play:{quiz_id}")],
+        [InlineKeyboardButton(text="📤 Yana yuklash", callback_data="up:retry")],
     ])
 
 
 async def _get_lang(state: FSMContext) -> str:
     data = await state.get_data()
     return data.get("language_code", "uz")
+
+
+# ─────────────────────── Polling background task ───────────────────────
+
+async def _poll_until_done(
+    bot: Bot,
+    chat_id: int,
+    user_id: int,
+    task_id: str,
+    file_name: str,
+    lang: str,
+) -> None:
+    """
+    Celery task tugaguncha /tasks/{task_id} ni har POLL_INTERVAL sekundda so'raydi.
+    Tugagach foydalanuvchiga natija xabarini yuboradi.
+    """
+    deadline = asyncio.get_event_loop().time() + POLL_TIMEOUT
+    while asyncio.get_event_loop().time() < deadline:
+        await asyncio.sleep(POLL_INTERVAL)
+        try:
+            data = await ai_engine_client().get_task_status(task_id)
+            status = data.get("status")
+
+            if status == "completed":
+                result = data.get("result", {})
+                quiz_id  = result.get("quiz_id")
+                total_q  = result.get("total_questions", 0)
+
+                if not quiz_id or total_q == 0:
+                    await bot.send_message(
+                        chat_id,
+                        "⚠️ Faylda savol topilmadi. Boshqa fayl yuboring.",
+                        reply_markup=_create_keyboard(),
+                    )
+                    return
+
+                labels = {
+                    "uz": f"✅ Quiz tayyor!\n📄 <b>{file_name}</b>\n📊 {total_q} ta savol topildi.",
+                    "ru": f"✅ Квиз готов!\n📄 <b>{file_name}</b>\n📊 Найдено вопросов: {total_q}.",
+                    "en": f"✅ Quiz ready!\n📄 <b>{file_name}</b>\n📊 {total_q} questions found.",
+                }
+                await bot.send_message(
+                    chat_id,
+                    labels.get(lang, labels["uz"]),
+                    reply_markup=_done_keyboard(quiz_id),
+                )
+                return
+
+            if status == "failed":
+                await bot.send_message(chat_id, t("upload_error", lang))
+                return
+
+        except Exception as exc:
+            logger.warning("poll task %s xatosi: %s", task_id, exc)
+
+    # Timeout
+    await bot.send_message(chat_id, t("upload_error", lang))
 
 
 # ─────────────────────── Quiz yaratish menyu ───────────────────────
@@ -68,10 +123,7 @@ async def _get_lang(state: FSMContext) -> str:
 async def quiz_create_menu(message: Message, state: FSMContext) -> None:
     lang = await _get_lang(state)
     await state.set_state(QuizStates.FILE_UPLOAD)
-    await message.answer(
-        t("upload_select_method", lang),
-        reply_markup=_create_keyboard(),
-    )
+    await message.answer(t("upload_select_method", lang), reply_markup=_create_keyboard())
 
 
 @router.callback_query(F.data == "up:file")
@@ -96,7 +148,6 @@ async def cb_image_upload(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-
 # ─────────────────────── Fayl handler ───────────────────────
 
 @router.message(F.document)
@@ -113,16 +164,14 @@ async def handle_document(message: Message, state: FSMContext) -> None:
         return
 
     progress_msg = await message.answer(
-        f"⏳ Qayta ishlanmoqda...\n📄 {doc.file_name}\n[░░░░░░░░░░ 0%]"
+        f"⏳ Fayl qabul qilindi...\n📄 {doc.file_name}\n[████░░░░░░ 40%]"
     )
     await state.set_state(QuizStates.PROCESSING)
 
     try:
         file = await message.bot.get_file(doc.file_id)
-        file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
-
-        await progress_msg.edit_text(
-            f"⏳ Qayta ishlanmoqda...\n📄 {doc.file_name}\n[████░░░░░░ 40%]"
+        file_url = (
+            f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
         )
 
         result = await ai_engine_client().process_file(
@@ -132,31 +181,35 @@ async def handle_document(message: Message, state: FSMContext) -> None:
             user_id=message.from_user.id,
         )
 
-        await progress_msg.edit_text(
-            f"⏳ Qayta ishlanmoqda...\n📄 {doc.file_name}\n[████████░░ 80%]"
-        )
+        if result.get("status") == "already_processed":
+            quiz_id = result.get("quiz_id")
+            await progress_msg.edit_text(
+                "ℹ️ Bu fayl avval yuklangan.",
+                reply_markup=_done_keyboard(quiz_id) if quiz_id else _create_keyboard(),
+            )
+            await state.clear()
+            return
 
         task_id = result.get("task_id")
         if not task_id:
-            if result.get("status") == "already_processed":
-                await progress_msg.edit_text(
-                    "ℹ️ Bu fayl avval yuklangan.\n"
-                    f"Quiz ID: {result.get('quiz_id', '—')}"
-                )
-                await state.clear()
-                return
+            raise ValueError("task_id qaytarilmadi")
 
-        # Task ID ni saqlab qo'yamiz — polling uchun
-        await state.update_data(
-            task_id=task_id,
-            file_name=doc.file_name,
-            import_log_id=result.get("import_log_id"),
-        )
-
+        await state.update_data(task_id=task_id, file_name=doc.file_name)
         await progress_msg.edit_text(
             f"⏳ AI tahlil qilmoqda...\n📄 {doc.file_name}\n[██████████ 100%]\n\n"
-            "Natija tayyor bo'lgach xabar keladi."
+            "Tayyor bo'lgach xabar keladi ✉️"
         )
+        await state.clear()
+
+        # Background polling — state endi kerak emas
+        asyncio.create_task(_poll_until_done(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            user_id=message.from_user.id,
+            task_id=task_id,
+            file_name=doc.file_name,
+            lang=lang,
+        ))
 
     except Exception as e:
         logger.error("Fayl yuklash xatosi: %s", e)
@@ -168,19 +221,15 @@ async def handle_document(message: Message, state: FSMContext) -> None:
 
 @router.message(QuizStates.IMAGE_UPLOAD, F.photo)
 async def handle_photo(message: Message, state: FSMContext) -> None:
-    """Foydalanuvchi rasm yuboradi — file_id larni yig'amiz."""
     data = await state.get_data()
     file_ids: list = data.get("image_file_ids", [])
-
-    # Eng katta o'lchamdagi rasmni olamiz
     photo: PhotoSize = message.photo[-1]
     file_ids.append(photo.file_id)
     await state.update_data(image_file_ids=file_ids)
 
-    count = len(file_ids)
     await message.answer(
-        f"📷 {count} ta rasm qabul qilindi.\n"
-        "Yana rasm yuboring yoki '✅ Tamom' bosing.",
+        f"📷 {len(file_ids)} ta rasm qabul qilindi.\n"
+        "Yana yuboring yoki '✅ Tamom' bosing.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Tamom", callback_data="up:images_done")]
         ]),
@@ -189,6 +238,7 @@ async def handle_photo(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "up:images_done")
 async def cb_images_done(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _get_lang(state)
     data = await state.get_data()
     file_ids: list = data.get("image_file_ids", [])
 
@@ -197,7 +247,7 @@ async def cb_images_done(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     progress_msg = await callback.message.edit_text(
-        f"⏳ {len(file_ids)} ta rasm tahlil qilinmoqda...\n[████████░░ 80%]"
+        f"⏳ {len(file_ids)} ta rasm tahlil qilinmoqda..."
     )
     await state.set_state(QuizStates.PROCESSING)
     await callback.answer()
@@ -210,46 +260,31 @@ async def cb_images_done(callback: CallbackQuery, state: FSMContext) -> None:
         )
 
         task_id = result.get("task_id")
-        await state.update_data(task_id=task_id, file_name="rasmlar")
+        if not task_id:
+            raise ValueError("task_id qaytarilmadi")
 
         await progress_msg.edit_text(
             f"⏳ AI Vision tahlil qilmoqda ({len(file_ids)} ta rasm)...\n"
-            "Natija tayyor bo'lgach xabar keladi."
+            "Tayyor bo'lgach xabar keladi ✉️"
         )
+        await state.clear()
+
+        asyncio.create_task(_poll_until_done(
+            bot=callback.bot,
+            chat_id=callback.message.chat.id,
+            user_id=callback.from_user.id,
+            task_id=task_id,
+            file_name="rasmlar",
+            lang=lang,
+        ))
+
     except Exception as e:
         logger.error("Rasm yuklash xatosi: %s", e)
-        await progress_msg.edit_text("❌ Rasmlar qayta ishlanmadi. Keyinroq urinib ko'ring.")
+        await progress_msg.edit_text(t("upload_error", lang))
         await state.clear()
 
 
-# ─────────────────────── Save callbacks ───────────────────────
-
-@router.callback_query(F.data == "up:save")
-async def cb_save_quiz(callback: CallbackQuery, state: FSMContext) -> None:
-    data = await state.get_data()
-    task_id = data.get("task_id")
-
-    if not task_id:
-        await callback.answer("Quiz topilmadi!", show_alert=True)
-        return
-
-    try:
-        await ai_engine_client().save_quiz(
-            task_id=task_id,
-            name=data.get("file_name", "Yangi quiz"),
-            tags=[],
-            is_public=False,
-            quiz_group_id=None,
-            user_id=callback.from_user.id,
-        )
-        await callback.message.edit_text("✅ Quiz saqlandi! /quiz bilan boshlashingiz mumkin.")
-    except Exception as e:
-        logger.error("Quiz saqlash xatosi: %s", e)
-        await callback.message.edit_text("❌ Saqlashda xato yuz berdi.")
-    finally:
-        await state.clear()
-    await callback.answer()
-
+# ─────────────────────── Retry ───────────────────────
 
 @router.callback_query(F.data == "up:retry")
 async def cb_retry(callback: CallbackQuery, state: FSMContext) -> None:

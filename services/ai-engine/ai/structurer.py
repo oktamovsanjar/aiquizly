@@ -8,8 +8,8 @@ from openai import AsyncOpenAI
 
 from .prompts import STRUCTURE_PROMPT
 from .validator import validate_questions
-from ..boundary.splitter import QuestionBlock
-from ..config import settings
+from boundary.splitter import QuestionBlock
+from config import settings
 
 logger = logging.getLogger(__name__)
 

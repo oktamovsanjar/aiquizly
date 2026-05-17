@@ -96,6 +96,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/quiz_bot
       - REDIS_URL=redis://redis:6379/2
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - AI_PROVIDER=${AI_PROVIDER:-deepseek}
       - AI_ENGINE_PORT=8002
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
@@ -114,10 +116,14 @@ services:
   ai-worker:
     build: ./services/ai-engine
     command: celery -A tasks.process_file:celery_app worker --loglevel=info --concurrency=4
+    working_dir: /app
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/quiz_bot
       - REDIS_URL=redis://redis:6379/2
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - AI_PROVIDER=${AI_PROVIDER:-deepseek}
+      - PYTHONPATH=/app
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       redis:

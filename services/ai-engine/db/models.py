@@ -45,10 +45,12 @@ class Quiz(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+        UUID(as_uuid=True), nullable=False
+        # FK users.id — DB darajasida, ORM da emas (cross-service table)
     )
     quiz_group_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("quiz_groups.id"), nullable=True
+        UUID(as_uuid=True), nullable=True
+        # FK quiz_groups.id — DB darajasida, ORM da emas (cross-service)
     )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -149,7 +151,8 @@ class ImportLog(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        UUID(as_uuid=True), nullable=True
+        # FK users.id — DB darajasida, ORM da emas (cross-service table)
     )
     quiz_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("quizzes.id"), nullable=True

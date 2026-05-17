@@ -144,11 +144,11 @@ async def process_file(req: ProcessRequest):
         await session.commit()
         log_id = str(import_log.id)
 
-    # Celery task ga yuborish (asinxron)
+    # Celery task ga yuborish — resolved UUID ni yuborish (telegram_id emas)
     task = process_file_task.delay(
         file_content_hex=file_content.hex(),
         file_name=req.file_name,
-        user_id=req.user_id,
+        user_id=resolved_user_id,  # UUID string yoki None
         import_log_id=log_id,
         quiz_group_id=req.quiz_group_id,
         tags=req.tags or [],

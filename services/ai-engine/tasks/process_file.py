@@ -152,11 +152,16 @@ async def _save_to_db(
 
     async with AsyncSessionLocal() as session:
         try:
-            # Quiz yaratish
+            # Quiz yaratish — user_id UUID bo'lishi shart
+            # Agar None bo'lsa, users jadvalidan telegram_id orqali topamiz
+            resolved_owner = user_id
+            if not resolved_owner:
+                raise ValueError("user_id (UUID) topilmadi — quiz saqlanmadi")
+
             title = os.path.splitext(file_name)[0]
             quiz = await create_quiz(
                 session=session,
-                owner_id=user_id,
+                owner_id=resolved_owner,
                 title=title,
                 source_type="upload",
                 quiz_group_id=quiz_group_id,

@@ -319,29 +319,6 @@ class AIEngineClient:
             _raise_for_service("ai-engine", resp)
             return resp.json()
 
-    async def save_manual_quiz(
-        self,
-        name: str,
-        questions: list[dict[str, Any]],
-        tags: list[str],
-        is_public: bool,
-        user_id: int,
-    ) -> dict[str, Any]:
-        """POST /quizzes/manual"""
-        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-            resp = await client.post(
-                f"{self._base}/quizzes/manual",
-                json={
-                    "name": name,
-                    "questions": questions,
-                    "tags": tags,
-                    "is_public": is_public,
-                    "user_id": user_id,
-                },
-            )
-            _raise_for_service("ai-engine", resp)
-            return resp.json()
-
     async def get_trending_tags(self, limit: int = 9) -> list[str]:
         """GET /tags/trending"""
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:

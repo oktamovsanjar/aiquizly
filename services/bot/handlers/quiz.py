@@ -168,6 +168,14 @@ async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─────────────────────────── Quiz tanlash → Set tanlash ───────────────────────────
 
+@router.callback_query(F.data.startswith("qb:play:"))
+async def play_quiz_direct(cb: CallbackQuery, state: FSMContext) -> None:
+    """Upload tugagandan keyin bevosita o'ynash uchun shortcut."""
+    quiz_id = cb.data.split(":")[2]
+    cb.data = f"qb:quiz:{quiz_id}"
+    await select_quiz(cb, state)
+
+
 @router.callback_query(F.data.startswith("qb:quiz:"))
 async def select_quiz(cb: CallbackQuery, state: FSMContext) -> None:
     quiz_id = cb.data.split(":")[2]
