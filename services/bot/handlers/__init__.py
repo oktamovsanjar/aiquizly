@@ -4,7 +4,6 @@ from .start import router as start_router
 from .commands import router as commands_router
 from .quiz import router as quiz_router
 from .upload import router as upload_router
-from .manual import router as manual_router
 from .group import router as group_router
 from .profile import router as profile_router
 from .tg_group import router as tg_group_router
@@ -16,5 +15,4 @@ router.include_router(tg_group_router)
 router.include_router(group_router)
 router.include_router(quiz_router)
 router.include_router(upload_router)
-router.include_router(manual_router)
 router.include_router(profile_router)

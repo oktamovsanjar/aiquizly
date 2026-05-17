@@ -222,7 +222,6 @@ def upload_menu_keyboard() -> InlineKeyboardMarkup:
     return _kb(
         [InlineKeyboardButton(text="📄 Fayl yuklash", callback_data="up:file")],
         [InlineKeyboardButton(text="📷 Rasm yuborish", callback_data="up:image")],
-        [InlineKeyboardButton(text="✍️ Qo'lda yozish", callback_data="up:manual")],
         [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
     )
 
@@ -239,7 +238,6 @@ def review_keyboard(task_id: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Saqlash", callback_data=f"up:save:{task_id}")],
         [InlineKeyboardButton(text="👁 Ko'rib chiqish", callback_data=f"up:preview:{task_id}")],
         [InlineKeyboardButton(text="⏭ Xatolarni o'tkazib yuborish", callback_data=f"up:skip_errors:{task_id}")],
-        [InlineKeyboardButton(text="✏️ Qo'lda tuzatish", callback_data=f"up:manual_fix:{task_id}")],
         [InlineKeyboardButton(text="❌ Bekor", callback_data="up:cancel")],
     )
 

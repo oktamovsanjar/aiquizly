@@ -3,7 +3,7 @@ Full State Machine for Quiz Bot (aiogram FSM).
 
 States match BOT_UX.md §19:
   IDLE, QUIZ_SETUP, QUIZ_PLAYING, PAUSED, STOPPED,
-  FILE_UPLOAD, PROCESSING, REVIEW, MANUAL_CREATE
+  FILE_UPLOAD, PROCESSING, REVIEW
 """
 from aiogram.fsm.state import State, StatesGroup
 
@@ -48,19 +48,6 @@ class QuizStates(StatesGroup):
 
     REVIEW = State()
     """AI processing done. User reviews the result and confirms or edits."""
-
-    # ── Manual quiz creation ──────────────────────────────────────────────
-    MANUAL_CREATE = State()
-    """Step-by-step: quiz name → savol → variantlar → javob → yana savol?"""
-
-    MANUAL_CREATE_QUESTION = State()
-    """Waiting for the question text in manual creation flow."""
-
-    MANUAL_CREATE_OPTIONS = State()
-    """Waiting for answer options (one per message, up to 10)."""
-
-    MANUAL_CREATE_CORRECT = State()
-    """Waiting for user to pick the correct answer index."""
 
     # ── Quiz Group management ─────────────────────────────────────────────
     QUIZ_GROUP_CREATE_NAME = State()

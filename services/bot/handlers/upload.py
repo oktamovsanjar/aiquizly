@@ -43,7 +43,6 @@ def _create_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📄 Fayl yuklash", callback_data="up:file")],
         [InlineKeyboardButton(text="📷 Rasm yuborish", callback_data="up:image")],
-        [InlineKeyboardButton(text="✍️ Qo'lda yozish", callback_data="up:manual")],
     ])
 
 
@@ -96,15 +95,6 @@ async def cb_image_upload(callback: CallbackQuery, state: FSMContext) -> None:
     )
     await callback.answer()
 
-
-@router.callback_query(F.data == "up:manual")
-async def cb_manual(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(QuizStates.MANUAL_CREATE)
-    await callback.message.edit_text(
-        "✍️ Qo'lda quiz yaratish\n\n"
-        "Quiz nomini kiriting:"
-    )
-    await callback.answer()
 
 
 # ─────────────────────── Fayl handler ───────────────────────

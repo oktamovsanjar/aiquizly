@@ -65,7 +65,7 @@ async def cmd_help(message: Message) -> None:
         "📋 <b>Buyruqlar:</b>\n"
         "/start — Botni boshlash\n"
         "/quiz — Tez quiz (oxirgi to'plamdan)\n"
-        "/create — Quiz yaratish (fayl/rasm/qo'lda)\n"
+        "/create — Quiz yaratish (fayl yoki rasm)\n"
         "/profile — Profil va statistika\n"
         "/top — Reyting (leaderboard)\n"
         "/invite — Referal link\n"
