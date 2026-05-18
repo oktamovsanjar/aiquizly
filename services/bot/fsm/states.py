@@ -49,6 +49,9 @@ class QuizStates(StatesGroup):
     REVIEW = State()
     """AI processing done. User reviews the result and confirms or edits."""
 
+    REVIEW_EDITING = State()
+    """User is typing new question text while in review mode."""
+
     # ── Quiz Group management ─────────────────────────────────────────────
     QUIZ_GROUP_CREATE_NAME = State()
     """Awaiting quiz group name."""
@@ -75,3 +78,7 @@ class QuizStates(StatesGroup):
     # ── Search ────────────────────────────────────────────────────────────
     SEARCHING = State()
     """User typed search query or selected a tag."""
+
+    # ── Quiz management ───────────────────────────────────────────────────
+    QUIZ_RENAME = State()
+    """User is typing a new name for their quiz."""

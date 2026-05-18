@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -19,6 +20,16 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
+
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func parseTelegramID(r *http.Request) (int64, error) {
+	return strconv.ParseInt(chi.URLParam(r, "telegram_id"), 10, 64)
+}
 
 func main() {
 	cfg := config.Load()
@@ -94,6 +105,104 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
+	})
+
+	// User stats endpointlari
+	r.Route("/users/{telegram_id}", func(r chi.Router) {
+		r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
+			telegramID, err := parseTelegramID(r)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "telegram_id noto'g'ri"})
+				return
+			}
+			userID, err := queries.GetUserUUIDByTelegramID(r.Context(), telegramID)
+			if err != nil {
+				writeJSON(w, http.StatusOK, map[string]interface{}{
+					"total_xp": 0, "level": "beginner", "total_games": 0,
+					"total_correct": 0, "total_wrong": 0, "accuracy": 0.0,
+					"current_streak": 0, "longest_streak": 0,
+				})
+				return
+			}
+			stats, err := queries.GetUserStats(r.Context(), userID)
+			if err != nil {
+				writeJSON(w, http.StatusOK, map[string]interface{}{
+					"total_xp": 0, "level": "beginner", "total_games": 0,
+					"total_correct": 0, "total_wrong": 0, "accuracy": 0.0,
+					"current_streak": 0, "longest_streak": 0,
+				})
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(stats)
+		})
+
+		r.Get("/rank", func(w http.ResponseWriter, r *http.Request) {
+			telegramID, err := parseTelegramID(r)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "telegram_id noto'g'ri"})
+				return
+			}
+			userID, err := queries.GetUserUUIDByTelegramID(r.Context(), telegramID)
+			if err != nil {
+				writeJSON(w, http.StatusOK, map[string]interface{}{"rank": 0, "total": 0})
+				return
+			}
+			period := r.URL.Query().Get("period")
+			if period == "" {
+				period = "all"
+			}
+			now := time.Now()
+			var periodKey string
+			switch period {
+			case "daily":
+				periodKey = now.Format("2006-01-02")
+			case "weekly":
+				year, week := now.ISOWeek()
+				periodKey = fmt.Sprintf("%d-W%02d", year, week)
+			case "monthly":
+				periodKey = now.Format("2006-01")
+			default:
+				periodKey = "alltime"
+			}
+			rank, total, err := queries.GetUserRank(r.Context(), userID, period, periodKey)
+			if err != nil {
+				writeJSON(w, http.StatusOK, map[string]interface{}{"rank": 0, "total": 0})
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"rank": rank, "total": total})
+		})
+
+		r.Post("/xp", func(w http.ResponseWriter, r *http.Request) {
+			telegramID, err := parseTelegramID(r)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "telegram_id noto'g'ri"})
+				return
+			}
+			userID, err := queries.GetUserUUIDByTelegramID(r.Context(), telegramID)
+			if err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "foydalanuvchi topilmadi"})
+				return
+			}
+			var body struct {
+				XP     int    `json:"xp"`
+				Reason string `json:"reason"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "so'rov noto'g'ri"})
+				return
+			}
+			if err := queries.AddXPLog(r.Context(), db.AddXPLogParams{
+				UserID: userID, Amount: body.XP, Reason: body.Reason,
+			}); err != nil {
+				logger.Error("xp log xatosi", zap.Error(err))
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ichki xato"})
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "xp": body.XP})
+		})
 	})
 
 	// Game endpointlari

@@ -318,3 +318,119 @@ async def get_trending_tags(
     stmt = select(Tag).order_by(Tag.usage_count.desc()).limit(limit)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Question edit / delete  (review flow)
+# ---------------------------------------------------------------------------
+
+async def get_question(
+    session: AsyncSession, question_id: str
+) -> Optional[Question]:
+    stmt = select(Question).where(Question.id == uuid.UUID(question_id))
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def update_question(
+    session: AsyncSession,
+    question_id: str,
+    question_text: Optional[str] = None,
+    options: Optional[list] = None,
+    correct_indices: Optional[list] = None,
+    explanation: Optional[str] = None,
+) -> bool:
+    """Updates one or more fields of a question. Returns True if found."""
+    values: dict = {}
+    if question_text is not None:
+        values["question_text"] = question_text
+    if options is not None:
+        values["options"] = options
+    if correct_indices is not None:
+        values["correct_indices"] = correct_indices
+    if explanation is not None:
+        values["explanation"] = explanation
+    if not values:
+        return True
+
+    result = await session.execute(
+        update(Question)
+        .where(Question.id == uuid.UUID(question_id))
+        .values(**values)
+        .returning(Question.id)
+    )
+    await session.commit()
+    return result.scalar_one_or_none() is not None
+
+
+async def delete_question(
+    session: AsyncSession, question_id: str, quiz_id: str
+) -> bool:
+    """Hard-deletes a question and decrements quiz.total_questions. Returns True if found."""
+    from sqlalchemy import delete as sa_delete
+
+    result = await session.execute(
+        sa_delete(Question)
+        .where(Question.id == uuid.UUID(question_id))
+        .returning(Question.id)
+    )
+    deleted = result.scalar_one_or_none()
+    if deleted:
+        # Recalculate sort_order and total_questions
+        remaining = (await session.execute(
+            select(func.count()).select_from(Question)
+            .where(Question.quiz_id == uuid.UUID(quiz_id))
+        )).scalar() or 0
+        await session.execute(
+            update(Quiz).where(Quiz.id == uuid.UUID(quiz_id))
+            .values(total_questions=remaining)
+        )
+        await session.commit()
+    return deleted is not None
+
+
+async def update_quiz(
+    session: AsyncSession,
+    quiz_id: str,
+    title: Optional[str] = None,
+    visibility: Optional[str] = None,
+) -> Optional[Quiz]:
+    """Update quiz title and/or visibility. Returns updated quiz or None."""
+    values: dict = {}
+    if title is not None:
+        values["title"] = title
+    if visibility is not None:
+        values["visibility"] = visibility
+    if not values:
+        return await get_quiz(session, quiz_id)
+
+    await session.execute(
+        update(Quiz)
+        .where(Quiz.id == uuid.UUID(quiz_id))
+        .where(Quiz.deleted_at.is_(None))
+        .values(**values)
+    )
+    await session.commit()
+    return await get_quiz(session, quiz_id)
+
+
+async def delete_quiz(session: AsyncSession, quiz_id: str) -> bool:
+    """Soft-delete a quiz by setting deleted_at. Returns True if found."""
+    result = await session.execute(
+        update(Quiz)
+        .where(Quiz.id == uuid.UUID(quiz_id))
+        .where(Quiz.deleted_at.is_(None))
+        .values(deleted_at=datetime.utcnow())
+        .returning(Quiz.id)
+    )
+    found = result.scalar_one_or_none()
+    await session.commit()
+    return found is not None
+
+
+async def count_questions(session: AsyncSession, quiz_id: str) -> int:
+    result = await session.execute(
+        select(func.count()).select_from(Question)
+        .where(Question.quiz_id == uuid.UUID(quiz_id))
+    )
+    return result.scalar() or 0

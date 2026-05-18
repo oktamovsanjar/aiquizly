@@ -462,6 +462,59 @@ func scanUserStats(row scanner) (*UserStats, error) {
 	return &s, nil
 }
 
+// GetUserUUIDByTelegramID — telegram_id bo'yicha user UUID ni oladi
+func (q *Queries) GetUserUUIDByTelegramID(ctx context.Context, telegramID int64) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := q.pool.QueryRow(ctx,
+		`SELECT id FROM users WHERE telegram_id = $1`,
+		telegramID,
+	).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrNotFound
+		}
+		return uuid.Nil, err
+	}
+	return id, nil
+}
+
+// GetQuizSetIDByNumber — quiz_id va set_number bo'yicha quiz_set UUID ni oladi
+func (q *Queries) GetQuizSetIDByNumber(ctx context.Context, quizID uuid.UUID, setNumber int) (uuid.UUID, int, error) {
+	var id uuid.UUID
+	var questionCount int
+	err := q.pool.QueryRow(ctx,
+		`SELECT id, question_count FROM quiz_sets WHERE quiz_id = $1 AND set_number = $2`,
+		quizID, setNumber,
+	).Scan(&id, &questionCount)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, 0, ErrNotFound
+		}
+		return uuid.Nil, 0, err
+	}
+	return id, questionCount, nil
+}
+
+// GetQuestionIDByIndex — quiz_set_id va set-ichidagi index bo'yicha question UUID ni oladi.
+// quiz_sets.start_index + index → questions jadvalidagi offset.
+func (q *Queries) GetQuestionIDByIndex(ctx context.Context, quizSetID uuid.UUID, index int) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := q.pool.QueryRow(ctx, `
+		SELECT qu.id
+		FROM questions qu
+		JOIN quiz_sets qs ON qs.quiz_id = qu.quiz_id
+		WHERE qs.id = $1 AND qu.sort_order = (qs.start_index + $2)`,
+		quizSetID, index,
+	).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrNotFound
+		}
+		return uuid.Nil, err
+	}
+	return id, nil
+}
+
 // ErrNotFound — ma'lumot topilmaganda qaytariladigan xato
 var ErrNotFound = fmt.Errorf("topilmadi")
 

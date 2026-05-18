@@ -4,7 +4,7 @@ AI Engine pipeline integration testlar.
 Har bir stage alohida test qilinadi:
   Stage 1: Format detection
   Stage 2: Text extraction (mock fayllar bilan)
-  Stage 3: Boundary detection (real matn bilan)
+  Stage 3: Text chunking
   Stage 4: AI Structuring (mock OpenAI/DeepSeek bilan)
   Stage 5: Validation
 
@@ -57,93 +57,105 @@ def test_format_detect_unknown_raises():
         detect_format("file.xyz")
 
 
-# ── Stage 3: Boundary Detection (real matn) ───────────────────────────────────
+# ── Stage 3: Text Chunking ────────────────────────────────────────────────────
 
-def test_boundary_numbered_questions():
-    """Raqamli savollar (1. 2. 3.) to'g'ri ajratilishi."""
-    from boundary.splitter import detect_boundaries
-
-    text = (
-        "1. O'zbekistonning poytaxti?\n"
-        "A) Samarqand\n"
-        "B) Toshkent\n"
-        "C) Buxoro\n"
-        "D) Namangan\n"
-        "Javob: B\n\n"
-        "2. Quyosh tizimidagi eng katta sayyora?\n"
-        "A) Saturn\n"
-        "B) Mars\n"
-        "C) Yupiter\n"
-        "D) Venera\n"
-        "Javob: C\n"
-    )
-    blocks = detect_boundaries(text)
-    assert len(blocks) >= 2
-    assert "poytaxti" in blocks[0].raw_text
-    assert "sayyora" in blocks[1].raw_text
+def _import_chunk_text():
+    """celery va config ni mock qilib _chunk_text ni yuklaydi."""
+    import sys
+    from unittest.mock import MagicMock
+    sys.modules.setdefault("celery", MagicMock())
+    sys.modules.setdefault("config", MagicMock())
+    # Avval yuklangan bo'lsa qayta yuklamaslik
+    if "tasks.process_file" in sys.modules:
+        del sys.modules["tasks.process_file"]
+    from tasks.process_file import _chunk_text
+    return _chunk_text
 
 
-def test_boundary_empty_text():
-    """Bo'sh matn — bo'sh ro'yxat."""
-    from boundary.splitter import detect_boundaries
-    blocks = detect_boundaries("")
-    assert blocks == []
+def test_chunk_text_basic():
+    """Matn to'g'ri bo'laklarga bo'linadi."""
+    _chunk_text = _import_chunk_text()
+    text = "A" * 20000
+    chunks = _chunk_text(text, chunk_size=8000, overlap=200)
+    assert len(chunks) == 3
+    assert all(len(c.raw_text) <= 8000 for c in chunks)
 
 
-def test_boundary_single_question():
-    """Bitta savol — bitta block."""
-    from boundary.splitter import detect_boundaries
-    text = "1. Test savol?\nA) Ha\nB) Yo'q\n"
-    blocks = detect_boundaries(text)
-    assert len(blocks) >= 1
+def test_chunk_text_short():
+    """Qisqa matn — bitta chunk."""
+    _chunk_text = _import_chunk_text()
+    text = "Qisqa matn"
+    chunks = _chunk_text(text, chunk_size=8000, overlap=200)
+    assert len(chunks) == 1
+    assert chunks[0].raw_text == text
 
 
-def test_boundary_no_options():
-    """Variantsiz savol — block yaratilishi (yoki bo'sh)."""
-    from boundary.splitter import detect_boundaries
-    text = "1. Faqat savol matni"
-    blocks = detect_boundaries(text)
-    # Hech bo'lmaganda xato bermasligi kerak
-    assert isinstance(blocks, list)
+def test_chunk_text_empty():
+    """Bo'sh matn — hech qanday chunk yo'q."""
+    _chunk_text = _import_chunk_text()
+    chunks = _chunk_text("", chunk_size=8000, overlap=200)
+    assert len(chunks) == 0
+
+
+def test_chunk_text_overlap():
+    """Overlap ishlaydi — keyingi chunk oldingi oxirini o'z ichiga oladi."""
+    _chunk_text = _import_chunk_text()
+    # chunk_size=8000, overlap=200: i=0→7800→... ikkinchi chunk [7800:15800]
+    # [7800:8000]="A"*200 (overlap), [8000:8200]="B"*200
+    text = "A" * 8000 + "B" * 200 + "C" * 200
+    chunks = _chunk_text(text, chunk_size=8000, overlap=200)
+    assert len(chunks) >= 2
+    # Ikkinchi chunk overlap tufayli birinchi A larning oxiri bilan boshlanadi
+    assert chunks[1].raw_text[:200] == "A" * 200
 
 
 # ── Stage 4: AI Structuring (mock API) ───────────────────────────────────────
+
+def _make_settings_mock():
+    m = MagicMock()
+    m.ai_batch_size = 5
+    m.ai_max_retries = 3
+    m.ai_max_concurrent = 3
+    m.ai_model_primary = "gpt-4o"
+    m.ai_model_fallback = "gpt-4o-mini"
+    m.openai_api_key = "test-key"
+    return m
+
 
 @pytest.mark.asyncio
 async def test_structurer_parses_valid_response():
     """Mock AI response → to'g'ri JSON parse."""
     try:
         from ai import AIStructurer
-        from boundary.splitter import QuestionBlock
     except ImportError:
         pytest.skip("Structurer relative import — Docker ichida ishlanadi")
 
-    structurer = AIStructurer()
+    with patch("ai.structurer.settings", _make_settings_mock()):
+        structurer = AIStructurer()
 
-    mock_response_data = {
-        "questions": [
-            {
-                "question": "O'zbekistonning poytaxti?",
-                "options": ["Samarqand", "Toshkent", "Buxoro", "Namangan"],
-                "correct_index": 1,
-                "explanation": "Toshkent — O'zbekistonning poytaxti.",
-            }
-        ]
-    }
+        mock_response_data = {
+            "questions": [
+                {
+                    "question": "O'zbekistonning poytaxti?",
+                    "options": ["Samarqand", "Toshkent", "Buxoro", "Namangan"],
+                    "correct_index": 1,
+                    "explanation": "Toshkent — O'zbekistonning poytaxti.",
+                }
+            ]
+        }
+        mock_choice = MagicMock()
+        mock_choice.message.content = json.dumps(mock_response_data)
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
 
-    mock_choice = MagicMock()
-    mock_choice.message.content = json.dumps(mock_response_data)
-    mock_completion = MagicMock()
-    mock_completion.choices = [mock_choice]
+        with patch.object(structurer.client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_completion
+            blocks = [type("Block", (), {"raw_text": "O'zbekistonning poytaxti?\nA) Samarqand\nB) Toshkent"})()]
+            questions, _ = await structurer.structure_blocks(blocks)
 
-    with patch.object(structurer.client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = mock_completion
-        blocks = [QuestionBlock(raw_text="O'zbekistonning poytaxti?\nA) Samarqand\nB) Toshkent")]
-        result = await structurer.structure_blocks(blocks)
-
-    assert len(result) == 1
-    assert result[0]["question"] == "O'zbekistonning poytaxti?"
-    assert result[0]["correct_index"] == 1
+    assert len(questions) == 1
+    assert questions[0]["question"] == "O'zbekistonning poytaxti?"
+    assert questions[0]["correct_index"] == 1
 
 
 @pytest.mark.asyncio
@@ -151,11 +163,9 @@ async def test_structurer_retries_on_invalid_json():
     """AI noto'g'ri JSON bersa retry ishlaydi."""
     try:
         from ai import AIStructurer
-        from boundary.splitter import QuestionBlock
     except ImportError:
         pytest.skip("Structurer relative import — Docker ichida ishlanadi")
 
-    structurer = AIStructurer()
     call_count = 0
 
     async def mock_create(**kwargs):
@@ -172,10 +182,12 @@ async def test_structurer_retries_on_invalid_json():
         mock_completion.choices = [mock_choice]
         return mock_completion
 
-    with patch.object(structurer.client.chat.completions, "create", new_callable=AsyncMock) as mock_api:
-        mock_api.side_effect = mock_create
-        blocks = [QuestionBlock(raw_text="Q?\nA) A\nB) B")]
-        result = await structurer.structure_blocks(blocks)
+    with patch("ai.structurer.settings", _make_settings_mock()):
+        structurer = AIStructurer()
+        with patch.object(structurer.client.chat.completions, "create", new_callable=AsyncMock) as mock_api:
+            mock_api.side_effect = mock_create
+            blocks = [type("Block", (), {"raw_text": "Q?\nA) A\nB) B"})()]
+            await structurer.structure_blocks(blocks)
 
     assert call_count >= 2
 
@@ -188,9 +200,12 @@ async def test_structurer_empty_blocks():
     except ImportError:
         pytest.skip("Structurer relative import — Docker ichida ishlanadi")
 
-    structurer = AIStructurer()
-    result = await structurer.structure_blocks([])
-    assert result == []
+    with patch("ai.structurer.settings", _make_settings_mock()):
+        structurer = AIStructurer()
+        questions, stats = await structurer.structure_blocks([])
+
+    assert questions == []
+    assert stats == {}
 
 
 # ── Stage 5: Validation ───────────────────────────────────────────────────────
@@ -212,24 +227,18 @@ def test_validator_valid_questions():
             "correct_index": 1,
         },
     ]
-    result = validate_questions(questions)
-    # validate_questions valid savollar listini qaytaradi
+    result, stats = validate_questions(questions)
     assert isinstance(result, list)
     assert len(result) == 2
+    assert stats["few_options"] == 1   # "Savol 2?" 2 ta variant — standart 4 dan kam
 
 
 def test_validator_out_of_range_index():
     """correct_index options dan tashqarida → natijadan o'chiriladi."""
     from ai.validator import validate_questions
 
-    questions = [
-        {
-            "question": "Savol?",
-            "options": ["A", "B"],
-            "correct_index": 5,  # Noto'g'ri
-        }
-    ]
-    result = validate_questions(questions)
+    questions = [{"question": "Savol?", "options": ["A", "B"], "correct_index": 5}]
+    result, _ = validate_questions(questions)
     assert len(result) == 0
 
 
@@ -238,7 +247,7 @@ def test_validator_missing_question_text():
     from ai.validator import validate_questions
 
     questions = [{"options": ["A", "B"], "correct_index": 0}]
-    result = validate_questions(questions)
+    result, _ = validate_questions(questions)
     assert len(result) == 0
 
 
@@ -247,8 +256,9 @@ def test_validator_empty_options():
     from ai.validator import validate_questions
 
     questions = [{"question": "Savol?", "options": [], "correct_index": 0}]
-    result = validate_questions(questions)
+    result, stats = validate_questions(questions)
     assert len(result) == 0
+    assert stats["skipped_no_options"] == 1
 
 
 def test_validator_mixed():
@@ -257,9 +267,10 @@ def test_validator_mixed():
 
     questions = [
         {"question": "To'g'ri?", "options": ["A", "B"], "correct_index": 0},
-        {"options": ["A"], "correct_index": 0},  # question yo'q → o'chiriladi
+        {"question": "Bir variant", "options": ["A"], "correct_index": 0},   # 1 ta variant → skip
         {"question": "Yana to'g'ri?", "options": ["X", "Y", "Z"], "correct_index": 2},
     ]
-    result = validate_questions(questions)
+    result, stats = validate_questions(questions)
     assert len(result) == 2
     assert result[0]["question"] == "To'g'ri?"
+    assert stats["skipped_no_options"] == 1

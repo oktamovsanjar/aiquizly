@@ -1,4 +1,6 @@
 """Profil, reyting va referal handlerlari."""
+import asyncio
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import (
@@ -50,22 +52,16 @@ async def show_profile(event, state=None) -> None:
         send = event.answer
         answer = None
 
-    # Game servisdan stats olish
-    stats = {}
-    try:
-        stats = await game_client().get_user_stats(user.id)
-    except Exception:
-        pass
-
-    # Subscription servisdan plan olish
-    plan = "free"
-    expires_at = None
-    try:
-        sub = await subscription_client().get_plan(user.id)
-        plan = sub.get("plan", "free")
-        expires_at = sub.get("expires_at")
-    except Exception:
-        pass
+    # Game + Subscription parallel so'rovlar
+    stats_result, sub_result = await asyncio.gather(
+        game_client().get_user_stats(user.id),
+        subscription_client().get_plan(user.id),
+        return_exceptions=True,
+    )
+    stats = stats_result if isinstance(stats_result, dict) else {}
+    sub = sub_result if isinstance(sub_result, dict) else {}
+    plan = sub.get("plan", "free")
+    expires_at = sub.get("expires_at")
 
     level = stats.get("level", "beginner")
     level_icon = LEVEL_ICONS.get(level, "🌱")

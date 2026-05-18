@@ -90,17 +90,22 @@ _mod("keyboards.main_menu", main_menu_keyboard=MagicMock())
 _mod("keyboards.language", language_keyboard=MagicMock())
 
 _inline_fns = [
-    "quiz_browse_keyboard", "quiz_list_keyboard", "set_select_keyboard",
-    "time_select_keyboard", "quiz_start_keyboard", "stop_quiz_keyboard",
-    "pause_quiz_keyboard", "saved_quiz_keyboard", "quiz_result_keyboard",
-    "retry_result_keyboard", "upload_menu_keyboard", "image_upload_keyboard",
-    "review_keyboard", "visibility_keyboard", "quiz_group_keyboard",
-    "quiz_group_list_keyboard", "subscribe_group_keyboard",
+    "quiz_browse_keyboard", "quiz_list_keyboard", "my_quiz_list_keyboard",
+    "quiz_manage_keyboard", "quiz_delete_confirm_keyboard",
+    "set_select_keyboard", "time_select_keyboard", "quiz_start_keyboard",
+    "stop_quiz_keyboard", "pause_quiz_keyboard", "saved_quiz_keyboard",
+    "quiz_result_keyboard", "retry_result_keyboard", "upload_menu_keyboard",
+    "image_upload_keyboard", "review_keyboard", "visibility_keyboard",
+    "quiz_group_keyboard", "quiz_group_list_keyboard", "subscribe_group_keyboard",
     "leaderboard_tabs_keyboard", "payment_keyboard", "premium_plans_keyboard",
     "profile_keyboard", "referral_keyboard", "tg_group_settings_keyboard",
     "voting_keyboard", "group_result_keyboard",
+    # review flow
+    "quiz_done_with_review_keyboard", "review_nav_keyboard",
+    "review_answer_keyboard", "review_delete_confirm_keyboard",
 ]
-_mod("keyboards.inline", **{fn: MagicMock() for fn in _inline_fns})
+_inline_mod = _mod("keyboards.inline", **{fn: MagicMock() for fn in _inline_fns})
+_inline_mod.OPTION_LABELS = ["A", "B", "C", "D", "E", "F"]
 
 # ── fsm ────────────────────────────────────────────────────────────────────────
 _mod("fsm")
@@ -108,6 +113,10 @@ _mod("fsm.states", QuizStates=MagicMock())
 
 # ── utils ──────────────────────────────────────────────────────────────────────
 _mod("utils")
+_mod("utils.admin_notify",
+     notify_admin=MagicMock(), notify_bot_started=MagicMock(),
+     notify_new_user=MagicMock())
+_mod("utils.i18n", t=MagicMock(return_value=""))
 _mod("utils.api",
      ai_engine_client=MagicMock, subscription_client=MagicMock,
      game_client=MagicMock, notifier_client=MagicMock,

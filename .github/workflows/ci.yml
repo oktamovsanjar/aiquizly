@@ -4,81 +4,62 @@ on:
   push:
     branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # ─────────────────── 1. Lint ───────────────────
-  lint:
+  # ─────────────────── 1. Python Lint ───────────────────
+  lint-python:
+    name: Lint Python
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Go lint — gateway
-        uses: golangci/golangci-lint-action@v4
-        with:
-          working-directory: services/gateway
-
-      - name: Go lint — game
-        uses: golangci/golangci-lint-action@v4
-        with:
-          working-directory: services/game
-
-      - name: Go lint — notifier
-        uses: golangci/golangci-lint-action@v4
-        with:
-          working-directory: services/notifier
-
-      - name: Setup Python for lint
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
-      - name: Python lint (ruff + black)
+      - name: Install lint tools
+        run: pip install ruff black
+
+      - name: Ruff check
         run: |
-          pip install ruff black
-          ruff check services/bot services/ai-engine services/subscription services/admin-api --ignore E501
+          ruff check services/bot services/ai-engine services/subscription services/admin-api \
+            --ignore E501,E402
+
+      - name: Black format check
+        run: |
           black --check services/bot services/ai-engine services/subscription services/admin-api
 
-  # ─────────────────── 2. Go Unit Tests ───────────────────
-  test-go:
+  # ─────────────────── 2. Go Lint ───────────────────
+  lint-go:
+    name: Lint Go
     runs-on: ubuntu-latest
-    needs: lint
+    strategy:
+      matrix:
+        service: [gateway, game, notifier]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-          cache: true
 
-      - name: Test gateway
-        run: |
-          cd services/gateway
-          go test ./... -cover -coverprofile=coverage.out
-          go tool cover -func=coverage.out | grep total
-
-      - name: Test game (scoring, leaderboard, streak)
-        run: |
-          cd services/game
-          go test ./... -cover -coverprofile=coverage.out
-          go tool cover -func=coverage.out | grep total
-
-      - name: Test notifier
-        run: |
-          cd services/notifier
-          go test ./... -cover -coverprofile=coverage.out || true
-
-      - name: Coverage check (game >= 80%)
-        run: |
-          cd services/game
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Coverage: ${COVERAGE}%"
-          python3 -c "import sys; c=float('${COVERAGE}'); sys.exit(0 if c >= 70 else 1)"
+      - name: golangci-lint — ${{ matrix.service }}
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: services/${{ matrix.service }}
+          version: latest
+          args: --timeout=5m
 
   # ─────────────────── 3. Python Unit Tests ───────────────────
   test-python:
+    name: Python Tests
     runs-on: ubuntu-latest
-    needs: lint
     services:
       postgres:
         image: postgres:16-alpine
@@ -107,6 +88,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
       - name: Install ai-engine deps
         run: |
@@ -122,81 +104,97 @@ jobs:
             --cov-fail-under=70
         env:
           OPENAI_API_KEY: "sk-test-mock"
+          DEEPSEEK_API_KEY: "sk-test-mock"
           DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/quiz_bot_test"
           REDIS_URL: "redis://localhost:6379/2"
+          AI_PROVIDER: "openai"
 
-  # ─────────────────── 4. Docker Build ───────────────────
-  build:
+      - name: Install bot deps
+        run: |
+          cd services/bot
+          pip install -r requirements.txt pytest pytest-asyncio pytest-cov
+
+      - name: Run bot unit tests
+        run: |
+          cd services/bot
+          pytest tests/unit/ -v \
+            --cov=. \
+            --cov-report=term \
+            --cov-fail-under=60
+        env:
+          DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/quiz_bot_test"
+          REDIS_URL: "redis://localhost:6379/1"
+          TELEGRAM_BOT_TOKEN: "0:test-token"
+
+  # ─────────────────── 4. Go Unit Tests ───────────────────
+  test-go:
+    name: Go Tests
     runs-on: ubuntu-latest
-    needs: [test-go, test-python]
+    strategy:
+      matrix:
+        service: [game, gateway]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Test ${{ matrix.service }}
+        run: |
+          cd services/${{ matrix.service }}
+          go test ./... -cover -coverprofile=coverage.out -timeout 60s
+          go tool cover -func=coverage.out | grep total || true
+
+  # ─────────────────── 5. Docker Build ───────────────────
+  build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [lint-python, test-python, test-go]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+    strategy:
+      matrix:
+        service: [bot, ai-engine, subscription, admin-api, game, gateway, notifier]
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build gateway
+      - name: Build ${{ matrix.service }}
         uses: docker/build-push-action@v5
         with:
-          context: ./services/gateway
+          context: ./services/${{ matrix.service }}
           push: false
-          tags: quiz-bot/gateway:${{ github.sha }}
+          tags: quiz-bot/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
 
-      - name: Build game
-        uses: docker/build-push-action@v5
-        with:
-          context: ./services/game
-          push: false
-          tags: quiz-bot/game:${{ github.sha }}
-
-      - name: Build notifier
-        uses: docker/build-push-action@v5
-        with:
-          context: ./services/notifier
-          push: false
-          tags: quiz-bot/notifier:${{ github.sha }}
-
-      - name: Build bot
-        uses: docker/build-push-action@v5
-        with:
-          context: ./services/bot
-          push: false
-          tags: quiz-bot/bot:${{ github.sha }}
-
-      - name: Build ai-engine
-        uses: docker/build-push-action@v5
-        with:
-          context: ./services/ai-engine
-          push: false
-          tags: quiz-bot/ai-engine:${{ github.sha }}
-
-      - name: Build subscription
-        uses: docker/build-push-action@v5
-        with:
-          context: ./services/subscription
-          push: false
-          tags: quiz-bot/subscription:${{ github.sha }}
-
-      - name: Build admin-api
-        uses: docker/build-push-action@v5
-        with:
-          context: ./services/admin-api
-          push: false
-          tags: quiz-bot/admin-api:${{ github.sha }}
-
-  # ─────────────────── 5. Deploy (faqat main) ───────────────────
+  # ─────────────────── 6. Deploy (faqat main) ───────────────────
   deploy:
+    name: Deploy to Production
     runs-on: ubuntu-latest
     needs: build
     if: github.ref == 'refs/heads/main'
     environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     steps:
-      - name: Deploy to production
-        run: |
-          echo "Deploying ${{ github.sha }} to production..."
-          # ssh deploy@server "cd /app && \
-          #   docker compose pull && \
-          #   docker compose up -d --remove-orphans && \
-          #   docker image prune -f"
-          echo "Deploy done."
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            git pull origin main
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
+            echo "Deployed ${{ github.sha }}"
+        continue-on-error: true

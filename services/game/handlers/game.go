@@ -35,12 +35,18 @@ func NewGameHandler(queries *db.Queries, lb LeaderboardUpdater, log *zap.Logger)
 
 // --- POST /games ---
 
+// createGameRequest — bot telegram_id va set_number yuboradi; UUID lar DB dan resolve qilinadi
 type createGameRequest struct {
-	QuizID         string `json:"quiz_id"`
-	QuizSetID      string `json:"quiz_set_id"`
-	UserID         string `json:"user_id"`
-	Mode           string `json:"mode"`
-	TotalQuestions int    `json:"total_questions"`
+	// Bot yuboradi
+	UserID         interface{} `json:"user_id"`          // telegram_id (int64) yoki UUID string
+	QuizID         string      `json:"quiz_id"`           // UUID
+	SetNumber      int         `json:"set_number"`        // set raqami
+	TotalQuestions int         `json:"total_questions"`   // ixtiyoriy, agar 0 bo'lsa quiz_sets dan olinadi
+	Mode           string      `json:"mode"`
+	TimePerQuestion int        `json:"time_per_question"` // ignore, faqat ma'lumot
+	ChatID         interface{} `json:"chat_id"`           // ignore
+	// Eski format (to'g'ridan-to'g'ri UUID)
+	QuizSetID string `json:"quiz_set_id"`
 }
 
 type createGameResponse struct {
@@ -60,18 +66,54 @@ func (h *GameHandler) CreateGame(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "quiz_id noto'g'ri")
 		return
 	}
-	quizSetID, err := uuid.Parse(req.QuizSetID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "quiz_set_id noto'g'ri")
-		return
-	}
-	userID, err := uuid.Parse(req.UserID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "user_id noto'g'ri")
+
+	// user_id: telegram_id (int/float64 from JSON) yoki UUID string
+	var userID uuid.UUID
+	switch v := req.UserID.(type) {
+	case string:
+		userID, err = uuid.Parse(v)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "user_id noto'g'ri UUID")
+			return
+		}
+	case float64: // JSON numbers decode as float64
+		userID, err = h.queries.GetUserUUIDByTelegramID(r.Context(), int64(v))
+		if err != nil {
+			h.log.Error("telegram_id bo'yicha user topilmadi", zap.Float64("telegram_id", v), zap.Error(err))
+			writeError(w, http.StatusNotFound, "foydalanuvchi topilmadi")
+			return
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "user_id noto'g'ri format")
 		return
 	}
 
-	if req.TotalQuestions <= 0 {
+	// quiz_set_id: to'g'ridan-to'g'ri UUID yoki set_number dan resolve
+	var quizSetID uuid.UUID
+	var totalQuestions int
+	if req.QuizSetID != "" {
+		quizSetID, err = uuid.Parse(req.QuizSetID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "quiz_set_id noto'g'ri")
+			return
+		}
+		totalQuestions = req.TotalQuestions
+	} else if req.SetNumber > 0 {
+		quizSetID, totalQuestions, err = h.queries.GetQuizSetIDByNumber(r.Context(), quizID, req.SetNumber)
+		if err != nil {
+			h.log.Error("quiz set topilmadi", zap.String("quiz_id", req.QuizID), zap.Int("set_number", req.SetNumber), zap.Error(err))
+			writeError(w, http.StatusNotFound, "quiz set topilmadi")
+			return
+		}
+	} else {
+		writeError(w, http.StatusBadRequest, "quiz_set_id yoki set_number kerak")
+		return
+	}
+
+	if req.TotalQuestions > 0 {
+		totalQuestions = req.TotalQuestions
+	}
+	if totalQuestions <= 0 {
 		writeError(w, http.StatusBadRequest, "total_questions 0 dan katta bo'lishi kerak")
 		return
 	}
@@ -86,7 +128,7 @@ func (h *GameHandler) CreateGame(w http.ResponseWriter, r *http.Request) {
 		QuizSetID:      quizSetID,
 		UserID:         userID,
 		Mode:           mode,
-		TotalQuestions: req.TotalQuestions,
+		TotalQuestions: totalQuestions,
 	})
 	if err != nil {
 		h.log.Error("game yaratish xatosi", zap.Error(err))
@@ -126,6 +168,11 @@ func (h *GameHandler) GetGame(w http.ResponseWriter, r *http.Request) {
 // --- PUT /games/{game_id}/answer ---
 
 type answerRequest struct {
+	// Bot formati
+	QuestionIndex int  `json:"question_index"` // savol indeksi (0-based)
+	ChosenOption  *int `json:"chosen_option"`  // tanlangan variant (nil = skip)
+	TimeTakenMs   int  `json:"time_taken_ms"`  // bot yuboradi
+	// Yangi/eski format
 	QuestionID      string `json:"question_id"`
 	SelectedIndices []int  `json:"selected_indices"`
 	TimeSpentMs     int    `json:"time_spent_ms"`
@@ -151,12 +198,6 @@ func (h *GameHandler) SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	questionID, err := uuid.Parse(req.QuestionID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "question_id noto'g'ri")
-		return
-	}
-
 	game, err := h.queries.GetGame(r.Context(), gameID)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -173,21 +214,53 @@ func (h *GameHandler) SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// time_spent_ms: bot time_taken_ms yuboradi
+	if req.TimeSpentMs == 0 && req.TimeTakenMs > 0 {
+		req.TimeSpentMs = req.TimeTakenMs
+	}
+
+	// selected_indices: bot chosen_option yuboradi
+	if len(req.SelectedIndices) == 0 && req.ChosenOption != nil {
+		req.SelectedIndices = []int{*req.ChosenOption}
+	}
+
+	// question_id: bot question_index yuboradi → quiz_set_id + index → UUID
+	var questionID uuid.UUID
+	if req.QuestionID != "" {
+		questionID, err = uuid.Parse(req.QuestionID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "question_id noto'g'ri")
+			return
+		}
+	} else {
+		questionID, err = h.queries.GetQuestionIDByIndex(r.Context(), game.QuizSetID, req.QuestionIndex)
+		if err != nil {
+			h.log.Error("question index bo'yicha topilmadi", zap.Int("index", req.QuestionIndex), zap.Error(err))
+			writeError(w, http.StatusNotFound, "savol topilmadi")
+			return
+		}
+	}
+
 	// Savol ma'lumotlarini olish uchun questions jadvaliga murojaat (read-only)
 	// Game xizmati faqat o'z jadvallariga yozadi, lekin questions jadvalidan o'qishi mumkin
 	var correctIndices []int
-	var explanation string
+	var explanationPtr *string
 	var isCorrect bool
 
 	row := h.queries.Pool().QueryRow(r.Context(),
 		`SELECT correct_indices, explanation FROM questions WHERE id = $1`,
 		questionID,
 	)
-	err = row.Scan(&correctIndices, &explanation)
+	err = row.Scan(&correctIndices, &explanationPtr)
 	if err != nil {
 		h.log.Error("savol ma'lumotlarini olish xatosi", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "savol topilmadi")
 		return
+	}
+
+	explanation := ""
+	if explanationPtr != nil {
+		explanation = *explanationPtr
 	}
 
 	// To'g'rilikni tekshirish

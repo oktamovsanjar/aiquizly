@@ -1,6 +1,7 @@
 """Quiz oqimi — ko'rish, tanlash, o'ynash, to'xtatish, natijalar."""
+import asyncio
 import logging
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -9,11 +10,14 @@ from aiogram.types import (
 )
 
 from fsm.states import QuizStates
+from aiogram.filters import StateFilter
+
 from keyboards.inline import (
-    quiz_browse_keyboard, quiz_list_keyboard, set_select_keyboard,
-    time_select_keyboard, quiz_start_keyboard, stop_quiz_keyboard,
-    pause_quiz_keyboard, quiz_result_keyboard, retry_result_keyboard,
-    subscribe_group_keyboard,
+    quiz_browse_keyboard, quiz_list_keyboard, my_quiz_list_keyboard,
+    quiz_manage_keyboard, quiz_delete_confirm_keyboard,
+    set_select_keyboard, time_select_keyboard, quiz_start_keyboard,
+    stop_quiz_keyboard, pause_quiz_keyboard, quiz_result_keyboard,
+    retry_result_keyboard, subscribe_group_keyboard,
 )
 from utils.api import ai_engine_client, game_client
 from utils.i18n import t
@@ -24,6 +28,13 @@ logger = logging.getLogger(__name__)
 AUTO_PAUSE_SKIP_COUNT = 2
 
 router = Router()
+
+# Har bir poll uchun auto-advance timer: {user_id:poll_id -> Task}
+_poll_timers: dict[str, asyncio.Task] = {}
+
+
+def _timer_key(user_id: int, poll_id: str) -> str:
+    return f"{user_id}:{poll_id}"
 
 
 # ─────────────────────────── Boshlash menyusi ───────────────────────────
@@ -38,6 +49,20 @@ async def quiz_start_menu(message: Message, state: FSMContext) -> None:
         t("quiz_select_mode", lang),
         reply_markup=quiz_browse_keyboard(),
     )
+
+
+@router.callback_query(F.data == "up:menu")
+async def upload_menu(cb: CallbackQuery, state: FSMContext) -> None:
+    """Fayl yuklash menyusiga o'tish (inline tugma orqali)."""
+    from keyboards.inline import upload_menu_keyboard
+    data = await state.get_data()
+    lang = data.get("language_code", "uz")
+    await state.set_state(QuizStates.FILE_UPLOAD)
+    await cb.message.edit_text(
+        t("upload_select_method", lang),
+        reply_markup=upload_menu_keyboard(),
+    )
+    await cb.answer()
 
 
 @router.callback_query(F.data == "qb:menu")
@@ -60,14 +85,13 @@ async def browse_my_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
     user_id = str(cb.from_user.id)
     try:
         data = await ai_engine_client().get_quizzes(user_id=int(user_id))
-        quizzes = data.get("quizzes", data) if isinstance(data, dict) else data
+        quizzes = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
     except Exception:
         quizzes = []
 
     if not quizzes:
         await cb.message.edit_text(
-            "📂 Sizda hali quizlar yo'q.\n\n"
-            "Fayl yuklash orqali yarating!",
+            "📂 Sizda hali quizlar yo'q.\n\nFayl yuklash orqali yarating!",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📤 Quiz yaratish", callback_data="up:menu")],
                 [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
@@ -78,9 +102,160 @@ async def browse_my_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
 
     await cb.message.edit_text(
         "📂 Sizning to'plamlaringiz:",
-        reply_markup=quiz_list_keyboard(quizzes),
+        reply_markup=my_quiz_list_keyboard(quizzes),
     )
     await cb.answer()
+
+
+# ─────────────────────────── Quiz boshqaruvi (manage) ───────────────────────────
+
+@router.callback_query(F.data.startswith("qb:manage:"))
+async def quiz_manage_menu(cb: CallbackQuery, state: FSMContext) -> None:
+    quiz_id = cb.data.split(":", 2)[2]
+    try:
+        quiz = await ai_engine_client().get_quiz(quiz_id)
+    except Exception:
+        await cb.answer("Quiz topilmadi", show_alert=True)
+        return
+
+    is_public = quiz.get("visibility") == "public"
+    vis_icon = "🌐" if is_public else "🔒"
+    title = quiz.get("title", "Quiz")
+    total = quiz.get("total_questions", 0)
+
+    await state.update_data(manage_quiz_id=quiz_id)
+    await cb.message.edit_text(
+        f"⚙️ <b>{title}</b>\n"
+        f"📊 {total} ta savol  {vis_icon} {'Ochiq' if is_public else 'Yopiq'}",
+        reply_markup=quiz_manage_keyboard(quiz_id, is_public),
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("qb:vis:"))
+async def quiz_toggle_visibility(cb: CallbackQuery) -> None:
+    quiz_id = cb.data.split(":", 2)[2]
+    try:
+        quiz = await ai_engine_client().get_quiz(quiz_id)
+        is_public = quiz.get("visibility") == "public"
+        updated = await ai_engine_client().update_quiz(quiz_id, is_public=not is_public)
+        new_public = updated.get("visibility") == "public"
+        await cb.answer(f"✅ {'Ochiq' if new_public else 'Yopiq'} qilindi")
+    except Exception:
+        await cb.answer("❌ Xatolik yuz berdi", show_alert=True)
+        return
+
+    title = quiz.get("title", "Quiz")
+    total = quiz.get("total_questions", 0)
+    vis_icon = "🌐" if new_public else "🔒"
+    await cb.message.edit_text(
+        f"⚙️ <b>{title}</b>\n"
+        f"📊 {total} ta savol  {vis_icon} {'Ochiq' if new_public else 'Yopiq'}",
+        reply_markup=quiz_manage_keyboard(quiz_id, new_public),
+    )
+
+
+@router.callback_query(F.data.startswith("qb:del_quiz:"))
+async def quiz_delete_confirm(cb: CallbackQuery) -> None:
+    quiz_id = cb.data.split(":", 2)[2]
+    try:
+        quiz = await ai_engine_client().get_quiz(quiz_id)
+    except Exception:
+        await cb.answer("Quiz topilmadi", show_alert=True)
+        return
+
+    await cb.answer()
+    await cb.message.edit_text(
+        f"🗑 <b>{quiz.get('title', 'Quiz')}</b> ni o'chirasizmi?\n"
+        "Bu amalni qaytarib bo'lmaydi.",
+        reply_markup=quiz_delete_confirm_keyboard(quiz_id),
+    )
+
+
+@router.callback_query(F.data.startswith("qb:cdel_quiz:"))
+async def quiz_delete_execute(cb: CallbackQuery) -> None:
+    quiz_id = cb.data.split(":", 2)[2]
+    try:
+        await ai_engine_client().delete_quiz(quiz_id)
+        await cb.answer("🗑 Quiz o'chirildi")
+    except Exception:
+        await cb.answer("❌ Xatolik yuz berdi", show_alert=True)
+        return
+
+    # Ro'yxatga qaytish
+    user_id = cb.from_user.id
+    try:
+        data = await ai_engine_client().get_quizzes(user_id=user_id)
+        quizzes = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
+    except Exception:
+        quizzes = []
+
+    if not quizzes:
+        await cb.message.edit_text(
+            "📂 Sizda hali quizlar yo'q.\n\nFayl yuklash orqali yarating!",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📤 Quiz yaratish", callback_data="up:menu")],
+                [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
+            ]),
+        )
+    else:
+        await cb.message.edit_text(
+            "📂 Sizning to'plamlaringiz:",
+            reply_markup=my_quiz_list_keyboard(quizzes),
+        )
+
+
+@router.callback_query(F.data.startswith("qb:rename:"))
+async def quiz_rename_start(cb: CallbackQuery, state: FSMContext) -> None:
+    quiz_id = cb.data.split(":", 2)[2]
+    try:
+        quiz = await ai_engine_client().get_quiz(quiz_id)
+    except Exception:
+        await cb.answer("Quiz topilmadi", show_alert=True)
+        return
+
+    await state.update_data(manage_quiz_id=quiz_id)
+    await state.set_state(QuizStates.QUIZ_RENAME)
+    await cb.answer()
+    await cb.message.edit_text(
+        f"✏️ <b>{quiz.get('title', 'Quiz')}</b> — yangi nomini yozing:\n\n"
+        "Yoki /cancel bosing."
+    )
+
+
+@router.message(StateFilter(QuizStates.QUIZ_RENAME), F.text)
+async def quiz_rename_input(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    quiz_id = data.get("manage_quiz_id")
+
+    if message.text == "/cancel" or not quiz_id:
+        await state.clear()
+        await message.answer("❌ Bekor qilindi.")
+        return
+
+    new_title = message.text.strip()[:100]
+    try:
+        updated = await ai_engine_client().update_quiz(quiz_id, title=new_title)
+        await message.answer(f"✅ Nom o'zgartirildi: <b>{updated.get('title', new_title)}</b>")
+    except Exception:
+        await message.answer("❌ Xatolik yuz berdi.")
+        await state.clear()
+        return
+
+    await state.clear()
+    # Manage menyusiga qaytish
+    try:
+        quiz = await ai_engine_client().get_quiz(quiz_id)
+        is_public = quiz.get("visibility") == "public"
+        total = quiz.get("total_questions", 0)
+        vis_icon = "🌐" if is_public else "🔒"
+        await message.answer(
+            f"⚙️ <b>{quiz.get('title', new_title)}</b>\n"
+            f"📊 {total} ta savol  {vis_icon} {'Ochiq' if is_public else 'Yopiq'}",
+            reply_markup=quiz_manage_keyboard(quiz_id, is_public),
+        )
+    except Exception:
+        pass
 
 
 # ─────────────────────────── Obunalarim ───────────────────────────
@@ -88,7 +263,6 @@ async def browse_my_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "qb:subs")
 async def browse_subscriptions(cb: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(QuizStates.BROWSING_SUBSCRIPTIONS)
-    # DB dan foydalanuvchining obunalarini olish
     from db import AsyncSessionLocal
     from db.models import QuizGroupSubscriber, QuizGroup, User
     from sqlalchemy import select
@@ -139,13 +313,14 @@ async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
         elif mode == "random":
             import random
             data = await ai_engine_client().get_quizzes(public=True, page_size=20)
-            quizzes_all = data.get("quizzes", data) if isinstance(data, dict) else data
+            quizzes_all = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
             if quizzes_all:
                 random.shuffle(quizzes_all)
-                data = {"quizzes": quizzes_all[:5]}
+                quizzes_all = quizzes_all[:5]
+            data = {"quizzes": quizzes_all}
         else:
             data = await ai_engine_client().get_quizzes(public=True)
-        quizzes = data.get("quizzes", data) if isinstance(data, dict) else data
+        quizzes = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
     except Exception:
         quizzes = []
 
@@ -185,7 +360,6 @@ async def select_quiz(cb: CallbackQuery, state: FSMContext) -> None:
         await cb.answer("Quiz topilmadi", show_alert=True)
         return
 
-    # Setlarni ko'rsatish (20 tadan bo'lingan)
     total_q = quiz.get("total_questions", 0)
     set_size = 20
     num_sets = max(1, (total_q + set_size - 1) // set_size)
@@ -200,6 +374,72 @@ async def select_quiz(cb: CallbackQuery, state: FSMContext) -> None:
         f"📏 {total_q} savol | {num_sets} set\n\n"
         "Set tanlang:",
         reply_markup=set_select_keyboard(sets, quiz_id),
+    )
+    await cb.answer()
+
+
+# ─────────────────────────── Navigatsiya / Orqaga ───────────────────────────
+
+@router.callback_query(F.data == "qb:back")
+async def back_to_quiz_list(cb: CallbackQuery, state: FSMContext) -> None:
+    """Set tanlash ekranidan quiz ro'yxatiga qaytish."""
+    data = await state.get_data()
+    quiz_id = data.get("quiz_id")
+    if not quiz_id:
+        await back_to_menu(cb, state)
+        return
+    # quiz_id mavjud — shu quizni qayta ko'rsat
+    cb.data = f"qb:quiz:{quiz_id}"
+    await select_quiz(cb, state)
+
+
+@router.callback_query(F.data.startswith("qp:back_set:"))
+async def back_to_set_select(cb: CallbackQuery, state: FSMContext) -> None:
+    """Vaqt tanlashdan set tanlashga qaytish."""
+    quiz_id = cb.data.split(":")[2]
+    cb.data = f"qb:quiz:{quiz_id}"
+    await select_quiz(cb, state)
+
+
+@router.callback_query(F.data.startswith("qp:change_time:"))
+async def change_time(cb: CallbackQuery, state: FSMContext) -> None:
+    """Start ekranidan vaqtni o'zgartirish."""
+    parts = cb.data.split(":")
+    quiz_id = parts[2]
+    set_number = int(parts[3])
+    await state.update_data(quiz_id=quiz_id, set_number=set_number)
+    await state.set_state(QuizStates.QUIZ_SETUP)
+    data = await state.get_data()
+    lang = data.get("language_code", "uz")
+    await cb.message.edit_text(
+        t("quiz_select_time", lang),
+        reply_markup=time_select_keyboard(quiz_id, set_number),
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("qb:page:"))
+async def quiz_list_page(cb: CallbackQuery, state: FSMContext) -> None:
+    """Quiz ro'yxatida sahifalar."""
+    page = int(cb.data.split(":")[2])
+    data = await state.get_data()
+    browsing_state = await state.get_state()
+    user_id = cb.from_user.id
+    try:
+        if browsing_state == QuizStates.BROWSING_MY_QUIZZES.state:
+            resp = await ai_engine_client().get_quizzes(user_id=user_id, page=page)
+        else:
+            resp = await ai_engine_client().get_quizzes(public=True, page=page)
+        quizzes = resp.get("quizzes", []) if isinstance(resp, dict) else (resp or [])
+        total = len(quizzes) + (page - 1) * 10
+        has_next = page * 10 < total
+    except Exception:
+        quizzes, has_next = [], False
+    if not quizzes:
+        await cb.answer("Boshqa sahifa yo'q", show_alert=True)
+        return
+    await cb.message.edit_reply_markup(
+        reply_markup=quiz_list_keyboard(quizzes, page=page, has_next=has_next)
     )
     await cb.answer()
 
@@ -233,6 +473,8 @@ async def select_time(cb: CallbackQuery, state: FSMContext) -> None:
 
     data = await state.get_data()
     quiz_title = data.get("quiz_title", "Quiz")
+    shuffle_q = data.get("shuffle_questions", False)
+    shuffle_o = data.get("shuffle_options", False)
 
     await state.update_data(time_sec=time_sec)
 
@@ -240,7 +482,35 @@ async def select_time(cb: CallbackQuery, state: FSMContext) -> None:
         f"📋 <b>{quiz_title}</b> — Set {set_number}\n"
         f"⏱ Har savol: {time_sec} soniya\n\n"
         "Tayyormisiz?",
-        reply_markup=quiz_start_keyboard(quiz_id, set_number, time_sec),
+        reply_markup=quiz_start_keyboard(quiz_id, set_number, time_sec, shuffle_q, shuffle_o),
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("qp:toggle_sq:"))
+async def toggle_shuffle_questions(cb: CallbackQuery, state: FSMContext) -> None:
+    parts = cb.data.split(":")
+    quiz_id, set_number, time_sec = parts[2], int(parts[3]), int(parts[4])
+    data = await state.get_data()
+    shuffle_q = not data.get("shuffle_questions", False)
+    shuffle_o = data.get("shuffle_options", False)
+    await state.update_data(shuffle_questions=shuffle_q)
+    await cb.message.edit_reply_markup(
+        reply_markup=quiz_start_keyboard(quiz_id, set_number, time_sec, shuffle_q, shuffle_o)
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("qp:toggle_so:"))
+async def toggle_shuffle_options(cb: CallbackQuery, state: FSMContext) -> None:
+    parts = cb.data.split(":")
+    quiz_id, set_number, time_sec = parts[2], int(parts[3]), int(parts[4])
+    data = await state.get_data()
+    shuffle_q = data.get("shuffle_questions", False)
+    shuffle_o = not data.get("shuffle_options", False)
+    await state.update_data(shuffle_options=shuffle_o)
+    await cb.message.edit_reply_markup(
+        reply_markup=quiz_start_keyboard(quiz_id, set_number, time_sec, shuffle_q, shuffle_o)
     )
     await cb.answer()
 
@@ -259,63 +529,101 @@ async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
         quiz_id=quiz_id, set_number=set_number, time_sec=time_sec,
         current_q_index=0, skip_count=0,
         correct=0, wrong=0, skipped=0,
+        wrong_question_ids=[],
+        current_poll_id=None,
     )
 
-    # Savollarni olish
-    try:
-        questions = await ai_engine_client().get_questions(quiz_id, set_number)
-    except Exception:
+    questions_result, game_result = await asyncio.gather(
+        ai_engine_client().get_questions(quiz_id, set_number),
+        game_client().start_game(
+            user_id=cb.from_user.id,
+            quiz_id=quiz_id,
+            set_number=set_number,
+            time_per_question=time_sec,
+        ),
+        return_exceptions=True,
+    )
+
+    if isinstance(questions_result, Exception):
         await cb.message.edit_text("❌ Savollarni yuklab bo'lmadi. Qaytadan urinib ko'ring.")
         await state.clear()
         await cb.answer()
         return
 
+    questions = list(questions_result)
     if not questions:
         await cb.message.edit_text("❌ Bu setda savollar topilmadi.")
         await state.clear()
         await cb.answer()
         return
 
+    fsm_data = await state.get_data()
+    if fsm_data.get("shuffle_questions"):
+        import random
+        random.shuffle(questions)
+
     await state.update_data(questions=questions, total=len(questions))
 
-    # Game service da game yaratish
-    try:
-        game_data = await game_client().start_game(
-            user_id=cb.from_user.id,
-            quiz_id=quiz_id,
-            set_number=set_number,
-            time_per_question=time_sec,
-        )
-        await state.update_data(game_id=game_data.get("game_id"))
-    except Exception:
-        pass  # game service bo'lmasa ham quiz ketadi
+    if isinstance(game_result, dict):
+        await state.update_data(game_id=game_result.get("game_id"))
 
     await cb.message.delete()
     await cb.answer()
 
-    # Birinchi savolni yuborish
-    await _send_next_question(cb.message.chat.id, state, cb.bot)
+    await _send_next_question(cb.message.chat.id, cb.from_user.id, state, cb.bot)
 
 
-async def _send_next_question(chat_id: int, state: FSMContext, bot) -> None:
+# ─────────────────────────── Savol yuborish + auto-advance timer ───────────────────────────
+
+async def _send_next_question(chat_id: int, user_id: int, state: FSMContext, bot) -> None:
+    """Keyingi savolni yuboradi va vaqt tugaganda auto-advance timerni o'rnatadi."""
     data = await state.get_data()
+
+    # Agar quiz to'xtatilgan / pauzada bo'lsa — savol yuborma
+    current_state = await state.get_state()
+    if current_state not in (QuizStates.QUIZ_PLAYING.state, None):
+        return
+
     questions = data.get("questions", [])
     idx = data.get("current_q_index", 0)
     total = data.get("total", len(questions))
     time_sec = data.get("time_sec", 30)
 
     if idx >= total:
-        # Barcha savollar tugadi
-        await _show_results(chat_id, state, bot)
+        await _show_results(chat_id, user_id, state, bot)
         return
 
     q = questions[idx]
-    options = q.get("options", [])
-    correct_idx = q.get("correct_indices", [0])[0] if q.get("correct_indices") else q.get("correct_index", 0)
+    options = list(q.get("options", []))
+    correct_idx = (
+        q.get("correct_indices", [0])[0]
+        if q.get("correct_indices")
+        else q.get("correct_index", 0)
+    )
+
+    # Options shuffle: indekslarni kuzatib boramiz
+    if data.get("shuffle_options") and len(options) > 1:
+        import random
+        indexed = list(enumerate(options))
+        random.shuffle(indexed)
+        # orig_positions[i] = original index of the option now at position i
+        orig_positions = [orig_i for orig_i, _ in indexed]
+        options = [opt for _, opt in indexed]
+        # Correct option endi qaysi pozitsiyada?
+        correct_idx = orig_positions.index(correct_idx)
+
+    # Savol matnini qisqartirish — Telegram max 300 belgi
+    q_text = q.get("question_text", q.get("question", ""))
+    poll_question = f"({idx + 1}/{total}) {q_text}"
+    if len(poll_question) > 300:
+        poll_question = poll_question[:297] + "..."
+
+    # Variantlarni qisqartirish — Telegram max 100 belgi
+    options = [o[:100] if len(o) > 100 else o for o in options]
 
     msg = await bot.send_poll(
         chat_id=chat_id,
-        question=f"({idx + 1}/{total}) {q.get('question_text', q.get('question', ''))}",
+        question=poll_question,
         options=options,
         type="quiz",
         correct_option_id=correct_idx,
@@ -324,18 +632,137 @@ async def _send_next_question(chat_id: int, state: FSMContext, bot) -> None:
         is_anonymous=False,
     )
 
+    poll_id = msg.poll.id
+    # current_poll_correct_idx: Telegram ga yuborilgan haqiqiy to'g'ri indeks
+    # (shuffle bo'lmasa ham saqlaymiz — on_poll_answer shu qiymatni ishlatadi)
+    # last_poll_id: hech qachon tozalanmaydi — race condition fix uchun
     await state.update_data(
-        current_poll_id=msg.poll.id,
+        current_poll_id=poll_id,
+        last_poll_id=poll_id,
         current_poll_msg_id=msg.message_id,
         current_q_index=idx + 1,
+        current_poll_correct_idx=correct_idx,
     )
 
+    # Avvalgi timerni bekor qil
+    old_key = _timer_key(user_id, data.get("current_poll_id", ""))
+    old_task = _poll_timers.pop(old_key, None)
+    if old_task and not old_task.done():
+        old_task.cancel()
 
-@router.poll_answer()
-async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext) -> None:
-    """Foydalanuvchi poll ga javob berganda"""
+    # Vaqt tugagach auto-advance
+    key = _timer_key(user_id, poll_id)
+    task = asyncio.create_task(
+        _auto_advance(bot, chat_id, user_id, state, poll_id, time_sec, key)
+    )
+    _poll_timers[key] = task
+
+
+async def _auto_advance(
+    bot, chat_id: int, user_id: int,
+    state: FSMContext, poll_id: str,
+    time_sec: int, task_key: str,
+) -> None:
+    """Vaqt tugagach (time_sec + 1.5s), user javob bermagan bo'lsa keyingi savolga o'tish."""
+    await asyncio.sleep(time_sec + 1.5)
+    _poll_timers.pop(task_key, None)
+
     data = await state.get_data()
     if not data.get("questions"):
+        return
+
+    # Agar allaqachon boshqa savol yuborilgan bo'lsa — bu timer eski
+    if data.get("current_poll_id") != poll_id:
+        return
+
+    current_state = await state.get_state()
+    if current_state == QuizStates.PAUSED.state:
+        return
+
+    # Bu savolga javob berilmadi → skip
+    idx = data.get("current_q_index", 1) - 1
+    skip_count = data.get("skip_count", 0) + 1
+    skipped = data.get("skipped", 0) + 1
+    await state.update_data(skipped=skipped, skip_count=skip_count, current_poll_id=None)
+
+    # Game servisga skip yuborish
+    game_id = data.get("game_id")
+    if game_id and idx >= 0:
+        try:
+            await game_client().submit_answer(
+                game_id=game_id,
+                question_index=idx,
+                chosen_option=None,
+                time_taken_ms=time_sec * 1000,
+            )
+        except Exception:
+            pass
+
+    if skip_count >= AUTO_PAUSE_SKIP_COUNT:
+        await state.set_state(QuizStates.PAUSED)
+        await state.update_data(skip_count=0)
+        fsm_data = await state.get_data()
+        lang = fsm_data.get("language_code", "uz")
+        pause_msg = await bot.send_message(
+            chat_id,
+            t("quiz_paused", lang),
+            reply_markup=pause_quiz_keyboard(),
+        )
+        # Pauza xabari ID ni saqlaymiz — agar user kech javob bersa o'chiramiz
+        await state.update_data(pause_msg_id=pause_msg.message_id)
+        return
+
+    await _send_next_question(chat_id, user_id, state, bot)
+
+
+# ─────────────────────────── Poll javobi ───────────────────────────
+
+@router.poll_answer()
+async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext, bot: Bot) -> None:
+    """Foydalanuvchi poll ga javob berganda."""
+    data = await state.get_data()
+    if not data.get("questions"):
+        return
+
+    current_poll_id = data.get("current_poll_id")
+    last_poll_id = data.get("last_poll_id")
+
+    late_answer = False  # timer avval ishlagan, javob kech keldi
+
+    if poll_answer.poll_id == current_poll_id:
+        # Oddiy holat: timer hali ishlamagan, javob o'z vaqtida keldi
+        key = _timer_key(poll_answer.user.id, poll_answer.poll_id)
+        task = _poll_timers.pop(key, None)
+        if task and not task.done():
+            task.cancel()
+        await state.update_data(current_poll_id=None, current_poll_correct_idx=None)
+
+    elif poll_answer.poll_id == last_poll_id and current_poll_id is None:
+        # Race condition: timer on_poll_answer dan oldin ishladi.
+        # Agar _auto_advance keyingi savolni yuborgan bo'lsa, last_poll_id yangilangan
+        # bo'ladi → bu shart bajarilmaydi. Demak faqat PAUSED yoki skip holati.
+        late_answer = True
+        # Noto'g'ri hisoblangan skipni bekor qilamiz
+        await state.update_data(
+            skip_count=max(0, data.get("skip_count", 0) - 1),
+            skipped=max(0, data.get("skipped", 0) - 1),
+            current_poll_id=None,
+            current_poll_correct_idx=None,
+        )
+        # Agar pauza bo'lgan bo'lsa, qayta PLAYING ga qaytaramiz
+        current_state = await state.get_state()
+        if current_state == QuizStates.PAUSED.state:
+            await state.set_state(QuizStates.QUIZ_PLAYING)
+            # Pauza xabarini o'chiramiz
+            pause_msg_id = data.get("pause_msg_id")
+            if pause_msg_id:
+                try:
+                    await bot.delete_message(poll_answer.user.id, pause_msg_id)
+                except Exception:
+                    pass
+                await state.update_data(pause_msg_id=None)
+    else:
+        # Eski yoki aloqasiz poll — e'tiborsiz
         return
 
     idx = data.get("current_q_index", 1) - 1
@@ -343,38 +770,29 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext) -> None:
     if idx < 0 or idx >= len(questions):
         return
 
-    q = questions[idx]
-    correct_indices = q.get("correct_indices", [q.get("correct_index", 0)])
     selected = poll_answer.option_ids
 
-    # Vaqt tugasa Telegram [] yuboradi — skip hisoblanadi
-    is_skipped = len(selected) == 0
-    is_correct = not is_skipped and sorted(selected) == sorted(correct_indices)
+    # Telegram ga yuborilgan haqiqiy to'g'ri indeksni ishlatamiz.
+    # Bu shuffle bo'lsa yangi pozitsiyani, bo'lmasa original indeksni ko'rsatadi.
+    # late_answer holatida current_poll_correct_idx tozalangan — data dan o'qiymiz
+    correct_idx = data.get("current_poll_correct_idx")
+    if correct_idx is None:
+        q = questions[idx]
+        correct_idx = (
+            q.get("correct_indices", [0])[0]
+            if q.get("correct_indices")
+            else q.get("correct_index", 0)
+        )
+
+    is_correct = bool(selected) and len(selected) == 1 and selected[0] == correct_idx
+    is_wrong = bool(selected) and not is_correct
 
     if is_correct:
         await state.update_data(
             correct=data.get("correct", 0) + 1,
             skip_count=0,
         )
-    elif is_skipped:
-        skip_count = data.get("skip_count", 0) + 1
-        await state.update_data(
-            skipped=data.get("skipped", 0) + 1,
-            skip_count=skip_count,
-        )
-        # Auto-pause: 2 ta ketma-ket skip
-        if skip_count >= AUTO_PAUSE_SKIP_COUNT:
-            await state.set_state(QuizStates.PAUSED)
-            await state.update_data(skip_count=0)
-            lang = data.get("language_code", "uz")
-            await poll_answer.bot.send_message(
-                poll_answer.user.id,
-                t("quiz_paused", lang),
-                reply_markup=pause_quiz_keyboard(),
-            )
-            return
-    else:
-        # Noto'g'ri javob — wrong savolni eslab qo'yamiz
+    elif is_wrong:
         wrong_q_ids = data.get("wrong_question_ids", [])
         wrong_q_ids.append(idx)
         await state.update_data(
@@ -382,9 +800,23 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext) -> None:
             skip_count=0,
             wrong_question_ids=wrong_q_ids,
         )
+    # selected bo'sh holat (timer allaqachon _auto_advance da ishlagan) — bu yerga yetmaydi
 
-    # Keyingi savolga o'tish
-    await _send_next_question(poll_answer.user.id, state, poll_answer.bot)
+    # Game servisga javobni yuborish (XP hisoblash uchun)
+    game_id = data.get("game_id")
+    if game_id:
+        try:
+            await game_client().submit_answer(
+                game_id=game_id,
+                question_index=idx,
+                chosen_option=selected[0] if selected else None,
+                time_taken_ms=data.get("time_sec", 30) * 1000,
+            )
+        except Exception:
+            pass
+
+    # late_answer holatida ham oddiy holat kabi keyingi savolni yuboramiz
+    await _send_next_question(poll_answer.user.id, poll_answer.user.id, state, bot)  # noqa: E501
 
 
 # ─────────────────────────── To'xtatish / Pauza ───────────────────────────
@@ -392,7 +824,6 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext) -> None:
 @router.message(Command("stop"))
 @router.callback_query(F.data == "qp:stop")
 async def stop_quiz(event, state: FSMContext) -> None:
-    """Quizni to'xtatish"""
     data = await state.get_data()
     current = data.get("current_q_index", 0)
     total = data.get("total", 0)
@@ -409,35 +840,32 @@ async def stop_quiz(event, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "qp:stop_result")
 async def stop_and_show_result(cb: CallbackQuery, state: FSMContext) -> None:
-    await _show_results(cb.message.chat.id, state, cb.bot, message=cb.message)
+    await _show_results(cb.message.chat.id, cb.from_user.id, state, cb.bot, message=cb.message)
     await cb.answer()
 
 
-@router.callback_query(F.data == "qp:stop_save")
-async def stop_and_save(cb: CallbackQuery, state: FSMContext) -> None:
-    data = await state.get_data()
-    game_id = data.get("game_id")
-    if game_id:
-        try:
-            await game_client().finish_game(game_id, status="saved")
-        except Exception:
-            pass
-    await state.clear()
-    await cb.message.edit_text("💾 Progress saqlandi. Keyinroq davom etishingiz mumkin.")
+@router.callback_query(F.data == "qp:pause_finish")
+async def pause_and_finish(cb: CallbackQuery, state: FSMContext) -> None:
+    """Pauza holatidan natijalarni ko'rsatish."""
+    await _show_results(cb.message.chat.id, cb.from_user.id, state, cb.bot, message=cb.message)
     await cb.answer()
 
 
 @router.callback_query(F.data == "qp:continue")
 async def continue_quiz(cb: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(QuizStates.QUIZ_PLAYING)
+    chat_id = cb.message.chat.id
+    user_id = cb.from_user.id
     await cb.message.delete()
     await cb.answer()
-    await _send_next_question(cb.message.chat.id, state, cb.bot)
+    await _send_next_question(chat_id, user_id, state, cb.bot)
 
 
 # ─────────────────────────── Natijalar ───────────────────────────
 
-async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> None:
+async def _show_results(
+    chat_id: int, user_id: int, state: FSMContext, bot, message=None
+) -> None:
     data = await state.get_data()
     correct = data.get("correct", 0)
     wrong = data.get("wrong", 0)
@@ -447,15 +875,20 @@ async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> N
     set_number = data.get("set_number", 1)
     time_sec = data.get("time_sec", 30)
     game_id = data.get("game_id")
+    lang = data.get("language_code", "uz")
+
+    # Joriy poll timerni to'xtat
+    current_poll_id = data.get("current_poll_id")
+    if current_poll_id:
+        key = _timer_key(user_id, current_poll_id)
+        task = _poll_timers.pop(key, None)
+        if task and not task.done():
+            task.cancel()
 
     score = int((correct / total * 1000)) if total > 0 else 0
-
-    # 100% natija emoji
-    lang = data.get("language_code", "uz")
     perfect = correct == total and total > 0
     header = "💯 Mukammal!" if perfect else t("quiz_completed", lang)
 
-    # Game servisni tugatish
     xp_earned = 0
     new_achievements = []
     if game_id:
@@ -478,7 +911,6 @@ async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> N
     if new_achievements:
         text += f"\n🏅 Yangi yutuq: {', '.join(new_achievements)}"
 
-    # Keyingi set bormi?
     next_set = set_number + 1 if (correct + wrong + skipped) >= total and total > 0 else None
 
     kb = quiz_result_keyboard(
@@ -494,28 +926,27 @@ async def _show_results(chat_id: int, state: FSMContext, bot, message=None) -> N
     else:
         await bot.send_message(chat_id, text, reply_markup=kb)
 
-    await state.clear()
+    # State ni IDLE ga qaytaramiz lekin data ni SAQLAYMIZ — retry uchun kerak
+    await state.set_state(None)
 
 
 # ─────────────────────────── Xatolarni qayta ishlash ───────────────────────────
 
 @router.callback_query(F.data.startswith("qp:retry:"))
 async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
-    """Noto'g'ri javob berilgan savollarni qayta o'ynash."""
     parts = cb.data.split(":")
     quiz_id = parts[2]
     set_number = int(parts[3])
 
-    # Oldingi sessiyada xato savollar indekslarini olish
     data = await state.get_data()
     wrong_ids = data.get("wrong_question_ids", [])
     all_questions = data.get("questions", [])
+    time_sec = data.get("time_sec", 30)
 
     if not wrong_ids or not all_questions:
-        # Qaytadan savollarni yuklab olamiz
         try:
             all_questions = await ai_engine_client().get_questions(quiz_id, set_number)
-            wrong_ids = list(range(len(all_questions)))  # hammasini retry qilamiz
+            wrong_ids = list(range(len(all_questions)))
         except Exception:
             await cb.answer("Savollarni yuklab bo'lmadi", show_alert=True)
             return
@@ -526,8 +957,6 @@ async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
         await cb.answer("Hech qanday xato savol topilmadi", show_alert=True)
         return
 
-    time_sec = data.get("time_sec", 30)
-
     await state.set_state(QuizStates.QUIZ_PLAYING)
     await state.update_data(
         questions=wrong_questions,
@@ -536,6 +965,7 @@ async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
         correct=0, wrong=0, skipped=0,
         skip_count=0,
         wrong_question_ids=[],
+        current_poll_id=None,
         quiz_id=quiz_id, set_number=set_number, time_sec=time_sec,
         is_retry=True,
     )
@@ -544,12 +974,11 @@ async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
         f"🔁 {len(wrong_questions)} ta xato savolni qayta ishlash boshlanadi..."
     )
     await cb.answer()
-    await _send_next_question(cb.message.chat.id, state, cb.bot)
+    await _send_next_question(cb.message.chat.id, cb.from_user.id, state, cb.bot)
 
 
 @router.callback_query(F.data.startswith("qp:show_wrong:"))
 async def show_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
-    """Xato savollarni ro'yxat sifatida ko'rsatish."""
     data = await state.get_data()
     wrong_ids = data.get("wrong_question_ids", [])
     questions = data.get("questions", [])
@@ -625,7 +1054,7 @@ async def handle_search(message: Message, state: FSMContext) -> None:
 
     try:
         data = await ai_engine_client().get_quizzes(search=query, tag=tag)
-        quizzes = data.get("quizzes", data) if isinstance(data, dict) else data
+        quizzes = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
     except Exception:
         quizzes = []
 
