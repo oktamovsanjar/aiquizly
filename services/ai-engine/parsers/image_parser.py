@@ -126,15 +126,21 @@ async def _call_vision(image_bytes: bytes, openai_client) -> str:
         raise
 
 
-async def parse_images_batch(images: List[bytes], openai_client) -> str:
+async def parse_images_batch(images: List[bytes], openai_client, max_concurrent: int = 3) -> str:
     """
-    Processes multiple images (e.g. user sent several screenshots).
+    Processes multiple images in parallel (max_concurrent bir vaqtda).
     Each image triggers one API call; results are combined in order.
     """
     if not images:
         return ""
 
-    tasks = [parse_image(img, openai_client) for img in images]
+    sem = asyncio.Semaphore(max_concurrent)
+
+    async def _bounded(img: bytes) -> str:
+        async with sem:
+            return await parse_image(img, openai_client)
+
+    tasks = [_bounded(img) for img in images]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     parts: List[str] = []

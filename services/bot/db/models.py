@@ -141,10 +141,11 @@ class TelegramGroup(Base):
     added_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    voting_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     min_voters: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     voting_timeout: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
-    who_can_start: Mapped[str] = mapped_column(String(20), nullable=False, default="admin")
+    who_can_start: Mapped[str] = mapped_column(String(20), nullable=False, default="all")
+    linked_quiz_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    stop_min_voters: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

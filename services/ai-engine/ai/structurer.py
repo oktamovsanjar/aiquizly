@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import List, Dict, Any, Tuple
 
 from openai import AsyncOpenAI
@@ -17,6 +18,35 @@ def _merge_stats(a: Dict[str, int], b: Dict[str, int]) -> Dict[str, int]:
     return {k: a.get(k, 0) + b.get(k, 0) for k in set(a) | set(b)}
 
 
+def _repair_truncated_json(raw: str) -> List[Dict[str, Any]]:
+    """
+    Truncated JSON dan to'liq savollarni regex orqali tiklash.
+    DeepSeek javobni kesib tashlaganda bu funksiya ishlatiladi.
+    """
+    pattern = re.compile(
+        r'\{\s*"question_text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,'
+        r'\s*"options"\s*:\s*\[((?:[^\[\]]|\[(?:[^\[\]])*\])*)\]\s*,'
+        r'\s*"correct_indices"\s*:\s*\[(\d+)\]',
+        re.DOTALL,
+    )
+    results = []
+    for m in pattern.finditer(raw):
+        try:
+            q_text = m.group(1).replace('\\"', '"')
+            opts_raw = "[" + m.group(2) + "]"
+            options = json.loads(opts_raw)
+            correct = int(m.group(3))
+            if isinstance(options, list) and len(options) >= 2:
+                results.append({
+                    "question_text": q_text,
+                    "options": options,
+                    "correct_indices": [correct],
+                })
+        except Exception:
+            continue
+    return results
+
+
 class AIStructurer:
     def __init__(self) -> None:
         if settings.ai_provider == "deepseek" and settings.deepseek_api_key:
@@ -28,11 +58,6 @@ class AIStructurer:
             self.client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     async def structure_blocks(self, blocks: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-        """
-        Savollarni batch qilib AI ga yuboradi.
-        Semaphore orqali max ai_max_concurrent parallel so'rov.
-        Qaytaradi: (questions, stats)
-        """
         if not blocks:
             return [], {}
 
@@ -80,9 +105,14 @@ class AIStructurer:
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
+                    max_tokens=8000,  # truncation oldini olish
                     response_format={"type": "json_object"} if supports_json_format else None,
                 )
                 raw = response.choices[0].message.content
+                finish_reason = response.choices[0].finish_reason
+                if finish_reason == "length":
+                    logger.warning("Batch %d truncated (finish_reason=length), regex fallback", batch_idx)
+
                 questions = self._parse_response(raw)
                 validated, stats = validate_questions(questions)
                 if validated:
@@ -98,10 +128,18 @@ class AIStructurer:
 
     def _parse_response(self, raw: str) -> List[Dict[str, Any]]:
         raw = raw.strip()
-        if raw.startswith("{"):
-            data = json.loads(raw)
-            for val in data.values():
-                if isinstance(val, list):
-                    return val
-            return []
-        return json.loads(raw)
+        try:
+            if raw.startswith("{"):
+                data = json.loads(raw)
+                for val in data.values():
+                    if isinstance(val, list):
+                        return val
+                return []
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            # Truncated JSON — regex bilan tiklash
+            logger.warning("JSON parse xatosi, regex fallback ishlatilmoqda")
+            repaired = _repair_truncated_json(raw)
+            if repaired:
+                logger.info("Regex fallback: %d savol tiklandi", len(repaired))
+            return repaired

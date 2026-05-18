@@ -95,11 +95,13 @@ def my_quiz_list_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def quiz_manage_keyboard(quiz_id: str, is_public: bool) -> InlineKeyboardMarkup:
+def quiz_manage_keyboard(quiz_id: str, is_public: bool, bot_username: str = "aiquizaibot") -> InlineKeyboardMarkup:
     """Quiz boshqaruv menyusi: o'ynash, tahrirlash, ko'rinish, o'chirish."""
     vis_text = "🔒 Yopiq qilish" if is_public else "🌐 Ochiq qilish"
+    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
     return _kb(
         [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:quiz:{quiz_id}")],
+        [InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=share_link)],
         [InlineKeyboardButton(text="📝 Savollarni tahrirlash", callback_data=f"rev:start:{quiz_id}")],
         [InlineKeyboardButton(text="✏️ Nomini o'zgartirish", callback_data=f"qb:rename:{quiz_id}")],
         [InlineKeyboardButton(text=vis_text, callback_data=f"qb:vis:{quiz_id}")],
@@ -207,6 +209,7 @@ def quiz_result_keyboard(
     next_set: int | None,
     has_wrong: bool,
     time_sec: int = 30,
+    bot_username: str = "aiquizaibot",
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
 
@@ -238,11 +241,12 @@ def quiz_result_keyboard(
             ]
         )
 
+    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
     rows.append(
         [
             InlineKeyboardButton(
-                text="📤 Natija ulashish",
-                callback_data=f"qp:share_result:{quiz_id}:{set_number}",
+                text="📤 Quizni ulashish",
+                switch_inline_query=share_link,
             )
         ]
     )
@@ -416,28 +420,17 @@ def referral_keyboard(bot_username: str, user_id: int) -> InlineKeyboardMarkup:
 # ──────────────────────────── Telegram Group ────────────────────────────
 
 
-def tg_group_settings_keyboard(voting: bool, who: str) -> InlineKeyboardMarkup:
-    voting_label = "✅ Yoqilgan" if voting else "❌ O'chirilgan"
+def tg_group_settings_keyboard(who: str, linked_count: int = 0) -> InlineKeyboardMarkup:
     admin_label = "●" if who == "admin" else " "
     all_label = "●" if who == "all" else " "
+    quiz_label = f"🔗 Quizlar: {linked_count} ta biriktirilgan" if linked_count else "🔗 Quiz biriktirish"
     return _kb(
         [
-            InlineKeyboardButton(
-                text=f"Voting: {voting_label}",
-                callback_data="tg:toggle_voting",
-            )
+            InlineKeyboardButton(text=f"({admin_label}) Faqat admin", callback_data="tg:who:admin"),
+            InlineKeyboardButton(text=f"({all_label}) Hammasi", callback_data="tg:who:all"),
         ],
-        [
-            InlineKeyboardButton(
-                text=f"({admin_label}) Faqat admin",
-                callback_data="tg:who:admin",
-            ),
-            InlineKeyboardButton(
-                text=f"({all_label}) Hammasi",
-                callback_data="tg:who:all",
-            ),
-        ],
-        [InlineKeyboardButton(text="💾 Saqlash", callback_data="tg:save_settings")],
+        [InlineKeyboardButton(text=quiz_label, callback_data="tg:manage_quizzes")],
+        [InlineKeyboardButton(text="✅ Yopish", callback_data="tg:save_settings")],
     )
 
 
@@ -450,6 +443,7 @@ def voting_keyboard(msg_id: int, voter_count: int) -> InlineKeyboardMarkup:
             )
         ],
         [InlineKeyboardButton(text="🚀 Hozir boshlash (admin)", callback_data=f"tg:force_start:{msg_id}")],
+        [InlineKeyboardButton(text="❌ Bekor (admin)", callback_data="tg:cancel_vote")],
     )
 
 
@@ -458,6 +452,51 @@ def group_result_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔄 Yana o'ynash", callback_data="tg:replay")],
         [InlineKeyboardButton(text="📊 Batafsil", callback_data="tg:detail")],
     )
+
+
+def tg_group_linked_quizzes_keyboard(linked: list[dict]) -> InlineKeyboardMarkup:
+    """Biriktirilgan quizlar ro'yxati — har birini o'chirish + yangi qo'shish."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for q in linked:
+        qid = q["id"]
+        title = q.get("title", q.get("name", "Quiz"))[:28]
+        rows.append([
+            InlineKeyboardButton(text=f"📋 {title}", callback_data=f"tg:lq_start:{qid}"),
+            InlineKeyboardButton(text="🗑", callback_data=f"tg:lq_remove:{qid}"),
+        ])
+    rows.append([InlineKeyboardButton(text="➕ Quiz qo'shish", callback_data="tg:lq_add")])
+    rows.append([InlineKeyboardButton(text="◀ Orqaga", callback_data="tg:lq_back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def tg_group_quiz_start_keyboard(quizzes: list[dict]) -> InlineKeyboardMarkup:
+    """Biriktirilgan quizlar orasidan birini boshlash uchun."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for q in quizzes:
+        qid = q["id"]
+        title = q.get("title", q.get("name", "Quiz"))
+        count = q.get("total_questions", "?")
+        rows.append([InlineKeyboardButton(
+            text=f"▶️ {title[:30]} ({count} savol)",
+            callback_data=f"tg:gstart:{qid}",
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data="tg:cancel_select")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def tg_group_quiz_select_keyboard(quizzes: list[dict]) -> InlineKeyboardMarkup:
+    """Admin guruhda quiz tanlash uchun keyboard (max 8 ta)."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for q in quizzes[:8]:
+        qid = q["id"]
+        title = q.get("title", q.get("name", "Quiz"))
+        count = q.get("total_questions", "?")
+        rows.append([InlineKeyboardButton(
+            text=f"📋 {title[:30]} ({count} savol)",
+            callback_data=f"tg:gselect:{qid}",
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data="tg:cancel_select")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ──────────────────────────── Review (quiz tahrirlash) ────────────────────────

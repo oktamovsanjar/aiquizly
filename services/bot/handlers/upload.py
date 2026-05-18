@@ -84,57 +84,75 @@ async def _poll_until_done(
         try:
             data = await ai_engine_client().get_task_status(task_id)
             status = data.get("status")
+        except Exception as exc:
+            logger.warning("poll task %s status xatosi: %s", task_id, exc)
+            continue
 
-            if status == "completed":
-                result = data.get("result", {})
-                quiz_id = result.get("quiz_id")
-                total_q = result.get("total_questions", 0)
+        if status == "completed":
+            result = data.get("result", {})
+            quiz_id = result.get("quiz_id")
+            total_q = result.get("total_questions", 0)
 
-                if not quiz_id or total_q == 0:
+            if not quiz_id or total_q == 0:
+                try:
                     await bot.edit_message_text(
                         "⚠️ Faylda savol topilmadi. Boshqa fayl yuboring.",
                         chat_id=chat_id,
                         message_id=progress_msg_id,
                         reply_markup=_create_keyboard(),
                     )
-                    return
+                except Exception:
+                    await bot.send_message(chat_id, "⚠️ Faylda savol topilmadi. Boshqa fayl yuboring.")
+                return
 
-                warnings = result.get("warnings", {})
-                warn_lines = []
-                if warnings.get("skipped_no_options", 0):
-                    warn_lines.append(f"⛔️ {warnings['skipped_no_options']} ta savol o'tkazib yuborildi (variant topilmadi)")
-                if warnings.get("few_options", 0):
-                    warn_lines.append(f"⚠️ {warnings['few_options']} ta savolda 4 dan kam variant")
-                if warnings.get("many_options", 0):
-                    warn_lines.append(f"⚠️ {warnings['many_options']} ta savolda 4 dan ko'p variant")
+            warnings = result.get("warnings", {})
+            warn_lines = []
+            if warnings.get("skipped_no_options", 0):
+                warn_lines.append(f"⛔️ {warnings['skipped_no_options']} ta savol o'tkazib yuborildi (variant topilmadi)")
+            if warnings.get("few_options", 0):
+                warn_lines.append(f"⚠️ {warnings['few_options']} ta savolda 4 dan kam variant")
+            if warnings.get("many_options", 0):
+                warn_lines.append(f"⚠️ {warnings['many_options']} ta savolda 4 dan ko'p variant")
 
-                labels = {
-                    "uz": f"✅ Quiz tayyor!\n📄 <b>{file_name}</b>\n📊 {total_q} ta savol topildi.",
-                    "ru": f"✅ Квиз готов!\n📄 <b>{file_name}</b>\n📊 Найдено вопросов: {total_q}.",
-                    "en": f"✅ Quiz ready!\n📄 <b>{file_name}</b>\n📊 {total_q} questions found.",
-                }
-                text = labels.get(lang, labels["uz"])
-                if warn_lines:
-                    text += "\n\n" + "\n".join(warn_lines)
+            labels = {
+                "uz": f"✅ Quiz tayyor!\n📄 <b>{file_name}</b>\n📊 {total_q} ta savol topildi.",
+                "ru": f"✅ Квиз готов!\n📄 <b>{file_name}</b>\n📊 Найдено вопросов: {total_q}.",
+                "en": f"✅ Quiz ready!\n📄 <b>{file_name}</b>\n📊 {total_q} questions found.",
+            }
+            text = labels.get(lang, labels["uz"])
+            if warn_lines:
+                text += "\n\n" + "\n".join(warn_lines)
 
+            try:
                 await bot.edit_message_text(
                     text,
                     chat_id=chat_id,
                     message_id=progress_msg_id,
                     reply_markup=_done_keyboard(quiz_id),
                 )
-                return
+            except Exception:
+                # progress xabari o'chirilgan bo'lsa — yangi xabar yuboramiz
+                await bot.send_message(
+                    chat_id,
+                    text,
+                    reply_markup=_done_keyboard(quiz_id),
+                )
+            return
 
-            if status == "failed":
+        if status == "failed":
+            try:
                 await bot.edit_message_text(
                     t("upload_error", lang),
                     chat_id=chat_id,
                     message_id=progress_msg_id,
                 )
-                return
+            except Exception:
+                await bot.send_message(chat_id, t("upload_error", lang))
+            return
 
-            # Har 3 siklda (12 sek) status xabarini yangilash
-            if tick % _STATUS_UPDATE_EVERY == 0:
+        # Har 3 siklda (12 sek) status xabarini yangilash
+        if tick % _STATUS_UPDATE_EVERY == 0:
+            try:
                 spinner = _SPINNER[(tick // _STATUS_UPDATE_EVERY) % len(_SPINNER)]
                 mins, secs = divmod(elapsed, 60)
                 timer = f"{mins}:{secs:02d}" if mins else f"{secs} sek"
@@ -143,16 +161,18 @@ async def _poll_until_done(
                     chat_id=chat_id,
                     message_id=progress_msg_id,
                 )
-
-        except Exception as exc:
-            logger.warning("poll task %s xatosi: %s", task_id, exc)
+            except Exception:
+                pass
 
     # Timeout
-    await bot.edit_message_text(
-        t("upload_error", lang),
-        chat_id=chat_id,
-        message_id=progress_msg_id,
-    )
+    try:
+        await bot.edit_message_text(
+            t("upload_error", lang),
+            chat_id=chat_id,
+            message_id=progress_msg_id,
+        )
+    except Exception:
+        await bot.send_message(chat_id, t("upload_error", lang))
 
 
 # ─────────────────────── Quiz yaratish menyu ───────────────────────

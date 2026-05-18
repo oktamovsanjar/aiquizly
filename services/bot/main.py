@@ -116,6 +116,7 @@ async def _setup_bot_settings(bot: Bot) -> None:
     # ── Group chat commands ────────────────────────────────────────────
     group_commands = [
         BotCommand(command="quiz",     description="▶️ Guruhda quiz boshlash"),
+        BotCommand(command="stop",     description="⏹ Quizni to'xtatish (admin)"),
         BotCommand(command="top",      description="🏆 Guruh reytingi"),
         BotCommand(command="settings", description="⚙️ Guruh sozlamalari (admin)"),
     ]

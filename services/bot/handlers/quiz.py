@@ -109,6 +109,14 @@ async def browse_my_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─────────────────────────── Quiz boshqaruvi (manage) ───────────────────────────
 
+async def _bot_username(bot) -> str:
+    try:
+        me = await bot.get_me()
+        return me.username or "aiquizaibot"
+    except Exception:
+        return "aiquizaibot"
+
+
 @router.callback_query(F.data.startswith("qb:manage:"))
 async def quiz_manage_menu(cb: CallbackQuery, state: FSMContext) -> None:
     quiz_id = cb.data.split(":", 2)[2]
@@ -127,7 +135,7 @@ async def quiz_manage_menu(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.message.edit_text(
         f"⚙️ <b>{title}</b>\n"
         f"📊 {total} ta savol  {vis_icon} {'Ochiq' if is_public else 'Yopiq'}",
-        reply_markup=quiz_manage_keyboard(quiz_id, is_public),
+        reply_markup=quiz_manage_keyboard(quiz_id, is_public, await _bot_username(cb.bot)),
     )
     await cb.answer()
 
@@ -151,7 +159,7 @@ async def quiz_toggle_visibility(cb: CallbackQuery) -> None:
     await cb.message.edit_text(
         f"⚙️ <b>{title}</b>\n"
         f"📊 {total} ta savol  {vis_icon} {'Ochiq' if new_public else 'Yopiq'}",
-        reply_markup=quiz_manage_keyboard(quiz_id, new_public),
+        reply_markup=quiz_manage_keyboard(quiz_id, new_public, await _bot_username(cb.bot)),
     )
 
 
@@ -252,7 +260,7 @@ async def quiz_rename_input(message: Message, state: FSMContext) -> None:
         await message.answer(
             f"⚙️ <b>{quiz.get('title', new_title)}</b>\n"
             f"📊 {total} ta savol  {vis_icon} {'Ochiq' if is_public else 'Yopiq'}",
-            reply_markup=quiz_manage_keyboard(quiz_id, is_public),
+            reply_markup=quiz_manage_keyboard(quiz_id, is_public, await _bot_username(message.bot)),
         )
     except Exception:
         pass
@@ -383,14 +391,13 @@ async def select_quiz(cb: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "qb:back")
 async def back_to_quiz_list(cb: CallbackQuery, state: FSMContext) -> None:
     """Set tanlash ekranidan quiz ro'yxatiga qaytish."""
-    data = await state.get_data()
-    quiz_id = data.get("quiz_id")
-    if not quiz_id:
-        await back_to_menu(cb, state)
-        return
-    # quiz_id mavjud — shu quizni qayta ko'rsat
-    cb.data = f"qb:quiz:{quiz_id}"
-    await select_quiz(cb, state)
+    browsing_state = await state.get_state()
+    if browsing_state == QuizStates.BROWSING_PUBLIC.state:
+        cb.data = "qb:public"
+        await browse_public_quizzes(cb, state)
+    else:
+        cb.data = "qb:my"
+        await browse_my_quizzes(cb, state)
 
 
 @router.callback_query(F.data.startswith("qp:back_set:"))
@@ -922,12 +929,19 @@ async def _show_results(
 
     next_set = set_number + 1 if (correct + wrong + skipped) >= total and total > 0 else None
 
+    try:
+        me = await bot.get_me()
+        bot_username = me.username or "aiquizaibot"
+    except Exception:
+        bot_username = "aiquizaibot"
+
     kb = quiz_result_keyboard(
         quiz_id=quiz_id,
         set_number=set_number,
         next_set=next_set,
         has_wrong=wrong > 0,
         time_sec=time_sec,
+        bot_username=bot_username,
     )
 
     if message:

@@ -119,6 +119,28 @@ async def _process_referral(referred_user: User, referrer_telegram_id: int) -> s
     return referrer.first_name or referrer.username or "Do'stingiz"
 
 
+@router.message(CommandStart(deep_link=True, magic=F.args.startswith("quiz_")))
+async def cmd_start_quiz(message: Message, state: FSMContext) -> None:
+    """Deep link orqali quiz ochish: /start quiz_<quiz_id>"""
+    quiz_id = message.args[5:]
+    user, is_new = await _upsert_user(message)
+
+    # Yangi user — avval til tanlashi kerak, quiz_id ni saqlaymiz
+    if is_new or not _is_returning_user(user):
+        lang = message.from_user.language_code or "uz"
+        if lang not in ("uz", "ru", "en"):
+            lang = "uz"
+        await state.update_data(pending_quiz_id=quiz_id)
+        await message.answer(
+            t("welcome_new", lang),
+            reply_markup=language_keyboard(),
+        )
+        return
+
+    # Mavjud user — darhol quizga yo'naltirish
+    await _open_quiz_by_id(message, state, quiz_id, user.language_code or "uz")
+
+
 @router.message(CommandStart(deep_link=True, magic=F.args.startswith("ref_")))
 async def cmd_start_referral(message: Message) -> None:
     """Deep link orqali kirish: /start ref_<telegram_id>"""
@@ -181,6 +203,27 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     )
 
 
+async def _open_quiz_by_id(message: Message, state: FSMContext, quiz_id: str, lang: str) -> None:
+    from fsm.states import QuizStates
+    from utils.api import ai_engine_client
+    from keyboards.inline import set_select_keyboard
+
+    try:
+        quiz = await ai_engine_client().get_quiz(quiz_id)
+        title = quiz.get("title", quiz.get("name", "Quiz"))
+        sets = await ai_engine_client().get_sets(quiz_id)
+    except Exception:
+        await message.answer("❌ Quiz topilmadi.")
+        return
+
+    await state.set_state(QuizStates.BROWSING_MY_QUIZZES)
+    await state.update_data(language_code=lang, selected_quiz_id=quiz_id, selected_quiz_title=title)
+    await message.answer(
+        f"📋 <b>{title}</b>\n\nSet tanlang:",
+        reply_markup=set_select_keyboard(sets, quiz_id),
+    )
+
+
 def _is_returning_user(user) -> bool:
     """Foydalanuvchi avval ham kirgan (created_at va updated_at farqli)."""
     try:
@@ -209,7 +252,16 @@ async def choose_language(message: Message, state: FSMContext) -> None:
         await session.commit()
 
     # FSM state ga ham saqlash — boshqa handlerlar uchun
+    data = await state.get_data()
     await state.update_data(language_code=lang)
+
+    # Deep link orqali kelgan quiz bormi?
+    pending_quiz_id = data.get("pending_quiz_id")
+    if pending_quiz_id:
+        await state.update_data(pending_quiz_id=None)
+        await message.answer(t("language_saved", lang), reply_markup=main_menu_keyboard(lang))
+        await _open_quiz_by_id(message, state, pending_quiz_id, lang)
+        return
 
     await message.answer(
         t("language_saved", lang),
