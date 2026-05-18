@@ -38,13 +38,13 @@ func NewGameHandler(queries *db.Queries, lb LeaderboardUpdater, log *zap.Logger)
 // createGameRequest — bot telegram_id va set_number yuboradi; UUID lar DB dan resolve qilinadi
 type createGameRequest struct {
 	// Bot yuboradi
-	UserID         interface{} `json:"user_id"`          // telegram_id (int64) yoki UUID string
-	QuizID         string      `json:"quiz_id"`           // UUID
-	SetNumber      int         `json:"set_number"`        // set raqami
-	TotalQuestions int         `json:"total_questions"`   // ixtiyoriy, agar 0 bo'lsa quiz_sets dan olinadi
-	Mode           string      `json:"mode"`
-	TimePerQuestion int        `json:"time_per_question"` // ignore, faqat ma'lumot
-	ChatID         interface{} `json:"chat_id"`           // ignore
+	UserID          interface{} `json:"user_id"`         // telegram_id (int64) yoki UUID string
+	QuizID          string      `json:"quiz_id"`         // UUID
+	SetNumber       int         `json:"set_number"`      // set raqami
+	TotalQuestions  int         `json:"total_questions"` // ixtiyoriy, agar 0 bo'lsa quiz_sets dan olinadi
+	Mode            string      `json:"mode"`
+	TimePerQuestion int         `json:"time_per_question"` // ignore, faqat ma'lumot
+	ChatID          interface{} `json:"chat_id"`           // ignore
 	// Eski format (to'g'ridan-to'g'ri UUID)
 	QuizSetID string `json:"quiz_set_id"`
 }
@@ -544,10 +544,10 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		totalXP      int
-		totalGames   int
-		totalCorrect int
-		totalWrong   int
+		totalXP       int
+		totalGames    int
+		totalCorrect  int
+		totalWrong    int
 		longestStreak int
 	)
 

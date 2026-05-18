@@ -30,30 +30,30 @@ type Game struct {
 
 // Answer — answers jadvali
 type Answer struct {
-	ID              uuid.UUID  `json:"id"`
-	GameID          uuid.UUID  `json:"game_id"`
-	QuestionID      uuid.UUID  `json:"question_id"`
-	UserID          uuid.UUID  `json:"user_id"`
-	SelectedIndices []int      `json:"selected_indices"`
-	IsCorrect       *bool      `json:"is_correct"`
-	TimeSpentMs     int        `json:"time_spent_ms"`
-	AnsweredAt      time.Time  `json:"answered_at"`
+	ID              uuid.UUID `json:"id"`
+	GameID          uuid.UUID `json:"game_id"`
+	QuestionID      uuid.UUID `json:"question_id"`
+	UserID          uuid.UUID `json:"user_id"`
+	SelectedIndices []int     `json:"selected_indices"`
+	IsCorrect       *bool     `json:"is_correct"`
+	TimeSpentMs     int       `json:"time_spent_ms"`
+	AnsweredAt      time.Time `json:"answered_at"`
 }
 
 // UserStats — user_stats jadvali
 type UserStats struct {
-	ID             uuid.UUID `json:"id"`
-	UserID         uuid.UUID `json:"user_id"`
-	TotalXP        int       `json:"total_xp"`
-	Level          string    `json:"level"`
-	TotalGames     int       `json:"total_games"`
-	TotalCorrect   int       `json:"total_correct"`
-	TotalWrong     int       `json:"total_wrong"`
-	Accuracy       float64   `json:"accuracy"`
-	CurrentStreak  int       `json:"current_streak"`
-	LongestStreak  int       `json:"longest_streak"`
-	LastPlayedAt   *time.Time `json:"last_played_at,omitempty"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	UserID        uuid.UUID  `json:"user_id"`
+	TotalXP       int        `json:"total_xp"`
+	Level         string     `json:"level"`
+	TotalGames    int        `json:"total_games"`
+	TotalCorrect  int        `json:"total_correct"`
+	TotalWrong    int        `json:"total_wrong"`
+	Accuracy      float64    `json:"accuracy"`
+	CurrentStreak int        `json:"current_streak"`
+	LongestStreak int        `json:"longest_streak"`
+	LastPlayedAt  *time.Time `json:"last_played_at,omitempty"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // XPLog — xp_logs jadvali
@@ -81,10 +81,10 @@ type Achievement struct {
 
 // UserAchievement — user_achievements jadvali
 type UserAchievement struct {
-	ID            uuid.UUID   `json:"id"`
-	UserID        uuid.UUID   `json:"user_id"`
-	AchievementID uuid.UUID   `json:"achievement_id"`
-	UnlockedAt    time.Time   `json:"unlocked_at"`
+	ID            uuid.UUID    `json:"id"`
+	UserID        uuid.UUID    `json:"user_id"`
+	AchievementID uuid.UUID    `json:"achievement_id"`
+	UnlockedAt    time.Time    `json:"unlocked_at"`
 	Achievement   *Achievement `json:"achievement,omitempty"`
 }
 

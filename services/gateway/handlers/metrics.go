@@ -15,13 +15,13 @@ var (
 )
 
 type MetricsResponse struct {
-	Service        string  `json:"service"`
-	TotalRequests  int64   `json:"total_requests"`
-	TotalErrors    int64   `json:"total_errors"`
-	UptimeSeconds  float64 `json:"uptime_seconds"`
-	GoRoutines     int     `json:"goroutines"`
-	MemAllocMB     float64 `json:"mem_alloc_mb"`
-	LastLatencyMs  float64 `json:"last_latency_ms"`
+	Service       string  `json:"service"`
+	TotalRequests int64   `json:"total_requests"`
+	TotalErrors   int64   `json:"total_errors"`
+	UptimeSeconds float64 `json:"uptime_seconds"`
+	GoRoutines    int     `json:"goroutines"`
+	MemAllocMB    float64 `json:"mem_alloc_mb"`
+	LastLatencyMs float64 `json:"last_latency_ms"`
 }
 
 func Metrics(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +41,6 @@ func Metrics(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func IncrRequests() { atomic.AddInt64(&totalRequests, 1) }
-func IncrErrors()   { atomic.AddInt64(&totalErrors, 1) }
+func IncrRequests()       { atomic.AddInt64(&totalRequests, 1) }
+func IncrErrors()         { atomic.AddInt64(&totalErrors, 1) }
 func SetLatency(ns int64) { atomic.StoreInt64(&webhookLatency, ns) }

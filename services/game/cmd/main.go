@@ -98,10 +98,10 @@ func main() {
 	r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		stat := pool.Stat()
 		resp := map[string]interface{}{
-			"db_total_conns":   stat.TotalConns(),
-			"db_idle_conns":    stat.IdleConns(),
+			"db_total_conns":    stat.TotalConns(),
+			"db_idle_conns":     stat.IdleConns(),
 			"db_acquired_conns": stat.AcquiredConns(),
-			"uptime_seconds":   int(time.Since(startTime).Seconds()),
+			"uptime_seconds":    int(time.Since(startTime).Seconds()),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
