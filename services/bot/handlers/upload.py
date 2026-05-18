@@ -248,11 +248,25 @@ async def handle_document(message: Message, state: FSMContext) -> None:
 
         if result.get("status") == "already_processed":
             quiz_id = result.get("quiz_id")
-            await progress_msg.edit_text(
-                "ℹ️ Bu fayl avval yuklangan.",
-                reply_markup=_done_keyboard(quiz_id) if quiz_id else _create_keyboard(),
+            await state.update_data(
+                reprocess_file_url=file_url,
+                reprocess_file_name=doc.file_name,
+                reprocess_file_size=doc.file_size,
             )
-            await state.clear()
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 Qayta tahlil qilish", callback_data="up:reprocess")],
+                    *(
+                        [[InlineKeyboardButton(text="📋 Mavjud quizni ko'rish", callback_data=f"up:existing:{quiz_id}")]]
+                        if quiz_id
+                        else []
+                    ),
+                ]
+            )
+            await progress_msg.edit_text(
+                "ℹ️ Bu fayl avval tahlil qilingan.\nQayta tahlil qilishni xohlaysizmi?",
+                reply_markup=kb,
+            )
             return
 
         task_id = result.get("task_id")
@@ -294,6 +308,81 @@ async def handle_photo(message: Message, state: FSMContext) -> None:
         reply_markup=_create_keyboard(),
     )
     await state.set_state(QuizStates.FILE_UPLOAD)
+
+
+@router.callback_query(F.data == "up:reprocess")
+async def cb_reprocess(callback: CallbackQuery, state: FSMContext) -> None:
+    """Avval yuklangan faylni force=True bilan qayta tahlil qilish."""
+    lang = await _get_lang(state)
+    data = await state.get_data()
+    file_url = data.get("reprocess_file_url")
+    file_name = data.get("reprocess_file_name", "fayl")
+    file_size = data.get("reprocess_file_size", 0)
+
+    if not file_url:
+        await callback.answer("Fayl ma'lumoti topilmadi. Qaytadan yuboring.", show_alert=True)
+        await state.clear()
+        return
+
+    progress_msg = await callback.message.edit_text(
+        f"🔍 Qayta tahlil qilinmoqda...\n📄 {file_name}"
+    )
+    await callback.answer()
+
+    try:
+        result = await ai_engine_client().process_file(
+            file_url=file_url,
+            file_name=file_name,
+            file_size=file_size,
+            user_id=callback.from_user.id,
+            force=True,
+        )
+        task_id = result.get("task_id")
+        if not task_id:
+            raise ValueError("task_id qaytarilmadi")
+
+        await progress_msg.edit_text(
+            f"🤖 AI savol ajratmoqda...\n📄 {file_name}\n\nNatija tayyor bo'lgach xabar keladi ✉️"
+        )
+        await state.clear()
+        asyncio.create_task(
+            _poll_until_done(
+                bot=callback.bot,
+                chat_id=callback.message.chat.id,
+                user_id=callback.from_user.id,
+                task_id=task_id,
+                file_name=file_name,
+                lang=lang,
+                progress_msg_id=progress_msg.message_id,
+            )
+        )
+    except Exception as e:
+        logger.error("Qayta tahlil xatosi: %s", e)
+        await progress_msg.edit_text(t("upload_error", lang))
+        await state.clear()
+
+
+@router.callback_query(F.data.startswith("up:existing:"))
+async def cb_existing_quiz(callback: CallbackQuery, state: FSMContext) -> None:
+    """Mavjud quizga o'tish."""
+    quiz_id = callback.data.split(":", 2)[2]
+    await state.clear()
+    await callback.answer()
+    from keyboards.inline import quiz_manage_keyboard
+    from utils.api import ai_engine_client as _ai
+
+    try:
+        quiz = await _ai().get_quiz(quiz_id)
+        title = quiz.get("title", "Quiz")
+        await callback.message.edit_text(
+            f"📋 <b>{title}</b>",
+            reply_markup=quiz_manage_keyboard(quiz_id),
+            parse_mode="HTML",
+        )
+    except Exception:
+        await callback.message.edit_text(
+            "Quiz topilmadi.", reply_markup=_create_keyboard()
+        )
 
 
 @router.callback_query(F.data == "up:images_done")

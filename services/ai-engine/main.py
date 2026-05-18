@@ -56,6 +56,7 @@ class ProcessRequest(BaseModel):
     user_id: str
     quiz_group_id: Optional[str] = None
     tags: Optional[List[str]] = None
+    force: bool = False
 
 
 @app.get("/health")
@@ -99,17 +100,18 @@ async def process_file(req: ProcessRequest):
 
     file_hash = hashlib.sha256(file_content).hexdigest()
 
-    # Dublikat tekshirish
+    # Dublikat tekshirish (force=True bo'lsa o'tkazib yuboriladi)
     async with AsyncSessionLocal() as session:
         from db.queries import check_file_hash
 
-        existing = await check_file_hash(session, file_hash)
-        if existing:
-            return {
-                "task_id": None,
-                "status": "already_processed",
-                "quiz_id": str(existing.quiz_id) if existing.quiz_id else None,
-            }
+        if not req.force:
+            existing = await check_file_hash(session, file_hash)
+            if existing:
+                return {
+                    "task_id": None,
+                    "status": "already_processed",
+                    "quiz_id": str(existing.quiz_id) if existing.quiz_id else None,
+                }
 
         # user_id ni telegram_id dan UUID ga resolve qilish
         import uuid as _uuid

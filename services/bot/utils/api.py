@@ -230,6 +230,7 @@ class AIEngineClient:
         file_size: int,
         user_id: int,
         mime_type: str = "",
+        force: bool = False,
     ) -> dict[str, Any]:
         resp = await self._http.post(
             "/process",
@@ -239,6 +240,7 @@ class AIEngineClient:
                 "file_size": file_size,
                 "user_id": str(user_id),
                 "mime_type": mime_type,
+                "force": force,
             },
         )
         _raise_for_service("ai-engine", resp)
