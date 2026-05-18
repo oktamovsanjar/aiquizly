@@ -44,6 +44,9 @@ Thumbs.db
 # Docker
 *.tar
 
+# Pytest cache
+.pytest_cache/
+
 # Test fixtures (sample files)
 services/ai-engine/tests/fixtures/*.docx
 services/ai-engine/tests/fixtures/*.pdf
