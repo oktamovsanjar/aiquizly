@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from limits.checker import LimitChecker
-from payments.telegram_stars import generate_invoice_payload, verify_payment, decode_payload, PERIOD_DAYS
+from payments.telegram_stars import (
+    generate_invoice_payload,
+    verify_payment,
+    decode_payload,
+    PERIOD_DAYS,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,6 +57,7 @@ async def health():
     try:
         async with AsyncSessionLocal() as session:
             from sqlalchemy import text
+
             await session.execute(text("SELECT 1"))
     except Exception:
         db_status = "error"
@@ -86,6 +92,7 @@ async def check_limit(
     if not resolved_user_id and telegram_id:
         try:
             from sqlalchemy import text
+
             async with AsyncSessionLocal() as session:
                 row = await session.execute(
                     text("SELECT id FROM users WHERE telegram_id = :tid"),
@@ -125,6 +132,7 @@ async def increment_usage(
     if not resolved_user_id and telegram_id:
         try:
             from sqlalchemy import text
+
             async with AsyncSessionLocal() as session:
                 row = await session.execute(
                     text("SELECT id FROM users WHERE telegram_id = :tid"),
@@ -159,6 +167,7 @@ async def list_plans():
     async with AsyncSessionLocal() as session:
         try:
             from db.queries import get_all_active_plans
+
             plans = await get_all_active_plans(session)
             return {
                 "plans": [
@@ -179,9 +188,23 @@ async def list_plans():
             # DB bo'sh bo'lsa — hardcoded response
             return {
                 "plans": [
-                    {"name": "free", "price_monthly": 0, "max_uploads_per_month": 3, "max_questions_per_file": 50},
-                    {"name": "premium", "price_monthly": 29000, "price_yearly": 249000, "max_uploads_per_month": None},
-                    {"name": "business", "price_monthly": None, "max_uploads_per_month": None},
+                    {
+                        "name": "free",
+                        "price_monthly": 0,
+                        "max_uploads_per_month": 3,
+                        "max_questions_per_file": 50,
+                    },
+                    {
+                        "name": "premium",
+                        "price_monthly": 29000,
+                        "price_yearly": 249000,
+                        "max_uploads_per_month": None,
+                    },
+                    {
+                        "name": "business",
+                        "price_monthly": None,
+                        "max_uploads_per_month": None,
+                    },
                 ]
             }
 
@@ -192,6 +215,7 @@ async def get_subscription(user_id: str):
     async with AsyncSessionLocal() as session:
         from db.queries import get_active_subscription
         import uuid as uuid_mod
+
         sub = await get_active_subscription(session, uuid_mod.UUID(user_id))
         if not sub:
             return {"plan": "free", "status": "none", "expires_at": None}
@@ -206,10 +230,11 @@ async def get_subscription(user_id: str):
 
 # --- To'lov endpointlari ---
 
+
 class StarsInvoiceRequest(BaseModel):
     user_id: str
-    plan: str       # premium | business
-    period: str     # monthly | yearly
+    plan: str  # premium | business
+    period: str  # monthly | yearly
 
 
 @app.post("/payments/stars/invoice")
@@ -225,7 +250,7 @@ async def create_stars_invoice(req: StarsInvoiceRequest):
 class StarsCompleteRequest(BaseModel):
     user_id: str
     provider_payment_id: str
-    payload: str    # Telegram tomonidan qaytarilgan opaque payload
+    payload: str  # Telegram tomonidan qaytarilgan opaque payload
 
 
 @app.post("/payments/stars/complete")
@@ -244,7 +269,12 @@ async def complete_stars_payment(req: StarsCompleteRequest):
     days = PERIOD_DAYS.get(period, 30)
 
     async with AsyncSessionLocal() as session:
-        from db.queries import get_plan, create_subscription, create_payment, complete_payment
+        from db.queries import (
+            get_plan,
+            create_subscription,
+            create_payment,
+            complete_payment,
+        )
         import uuid as uuid_mod
 
         user_uuid = uuid_mod.UUID(req.user_id)
@@ -265,7 +295,12 @@ async def complete_stars_payment(req: StarsCompleteRequest):
         await complete_payment(session, payment.id, req.provider_payment_id)
         await session.commit()
 
-    logger.info("Stars to'lov tasdiqlandi: user=%s plan=%s days=%d", req.user_id, plan_name, days)
+    logger.info(
+        "Stars to'lov tasdiqlandi: user=%s plan=%s days=%d",
+        req.user_id,
+        plan_name,
+        days,
+    )
     return {"success": True, "plan": plan_name, "days": days}
 
 
@@ -280,6 +315,7 @@ async def add_referral_bonus(req: ReferralBonusRequest):
     async with AsyncSessionLocal() as session:
         from db.queries import add_bonus_days
         import uuid as uuid_mod
+
         await add_bonus_days(session, uuid_mod.UUID(req.user_id), req.bonus_days)
         await session.commit()
     return {"success": True, "bonus_days": req.bonus_days}
@@ -287,5 +323,6 @@ async def add_referral_bonus(req: ReferralBonusRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.getenv("SUBSCRIPTION_PORT", "8003"))
     uvicorn.run(app, host="0.0.0.0", port=port)

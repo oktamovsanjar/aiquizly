@@ -9,8 +9,7 @@ Pricing (approximate at ~$0.013 / star, target USD prices):
   Premium monthly  = $6.99  ≈ 549  stars
   Premium yearly   = $59.99 ≈ 4719 stars
 """
-import hashlib
-import hmac
+
 import json
 import os
 import time
@@ -81,9 +80,12 @@ def generate_invoice_payload(
             "premium imkoniyatlar."
         ),
         "payload": payload_str,
-        "currency": "XTR",          # Telegram Stars currency code
+        "currency": "XTR",  # Telegram Stars currency code
         "prices": [
-            {"label": f"{plan_labels.get(plan_name, plan_name)} {period}", "amount": stars_amount}
+            {
+                "label": f"{plan_labels.get(plan_name, plan_name)} {period}",
+                "amount": stars_amount,
+            }
         ],
         # provider_token is empty string for Stars (native Telegram payments)
         "provider_token": "",

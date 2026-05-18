@@ -1,4 +1,5 @@
 """Tizim sozlamalari va adminlar boshqaruvi."""
+
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -15,6 +16,7 @@ router = APIRouter(tags=["settings"])
 
 # ── Settings ──────────────────────────────────────────────────────────────
 
+
 @router.get("/settings", dependencies=[Depends(require_auth)])
 async def get_settings(db: AsyncSession = Depends(get_db)):
     settings = (await db.execute(select(Setting))).scalars().all()
@@ -27,14 +29,18 @@ class SettingUpdate(BaseModel):
 
 
 @router.put("/settings/{key}", dependencies=[Depends(require_auth)])
-async def update_setting(key: str, body: SettingUpdate, db: AsyncSession = Depends(get_db)):
-    existing = (await db.execute(
-        select(Setting).where(Setting.key == key)
-    )).scalar_one_or_none()
+async def update_setting(
+    key: str, body: SettingUpdate, db: AsyncSession = Depends(get_db)
+):
+    existing = (
+        await db.execute(select(Setting).where(Setting.key == key))
+    ).scalar_one_or_none()
 
     if existing:
         await db.execute(
-            update(Setting).where(Setting.key == key).values(
+            update(Setting)
+            .where(Setting.key == key)
+            .values(
                 value=body.value,
                 description=body.description or existing.description,
                 updated_at=datetime.now(timezone.utc),
@@ -49,11 +55,14 @@ async def update_setting(key: str, body: SettingUpdate, db: AsyncSession = Depen
 
 # ── Adminlar ──────────────────────────────────────────────────────────────
 
+
 @router.get("/admins", dependencies=[Depends(require_auth)])
 async def list_admins(db: AsyncSession = Depends(get_db)):
-    admins = (await db.execute(
-        select(Admin).where(Admin.is_active.is_(True))
-    )).scalars().all()
+    admins = (
+        (await db.execute(select(Admin).where(Admin.is_active.is_(True))))
+        .scalars()
+        .all()
+    )
     return {
         "admins": [
             {
@@ -76,9 +85,9 @@ class AdminCreate(BaseModel):
 
 @router.post("/admins", dependencies=[Depends(require_auth)])
 async def create_admin(body: AdminCreate, db: AsyncSession = Depends(get_db)):
-    existing = (await db.execute(
-        select(Admin).where(Admin.telegram_id == body.telegram_id)
-    )).scalar_one_or_none()
+    existing = (
+        await db.execute(select(Admin).where(Admin.telegram_id == body.telegram_id))
+    ).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="Bu telegram_id allaqachon admin")
 
@@ -97,10 +106,9 @@ async def create_admin(body: AdminCreate, db: AsyncSession = Depends(get_db)):
 @router.delete("/admins/{admin_id}", dependencies=[Depends(require_auth)])
 async def remove_admin(admin_id: str, db: AsyncSession = Depends(get_db)):
     import uuid as uuid_mod
+
     await db.execute(
-        update(Admin)
-        .where(Admin.id == uuid_mod.UUID(admin_id))
-        .values(is_active=False)
+        update(Admin).where(Admin.id == uuid_mod.UUID(admin_id)).values(is_active=False)
     )
     await db.commit()
     return {"removed": True, "admin_id": admin_id}

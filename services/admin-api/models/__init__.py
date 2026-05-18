@@ -1,10 +1,16 @@
 """Admin API SQLAlchemy modellari."""
+
 import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, Column, DateTime, Integer,
-    String, Text, Float,
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase

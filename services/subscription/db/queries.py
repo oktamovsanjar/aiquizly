@@ -2,20 +2,21 @@
 All async DB operations for the subscription service.
 Uses SQLAlchemy 2.0 async style throughout.
 """
+
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select, update, func, text
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from .models import Plan, Subscription, Payment, UsageLog
 
-
 # ---------------------------------------------------------------------------
 # Subscriptions
 # ---------------------------------------------------------------------------
+
 
 async def get_active_subscription(
     session: AsyncSession, user_id: uuid.UUID
@@ -75,9 +76,7 @@ async def expire_subscriptions(session: AsyncSession) -> int:
     return result.rowcount
 
 
-async def add_bonus_days(
-    session: AsyncSession, user_id: uuid.UUID, days: int
-) -> None:
+async def add_bonus_days(session: AsyncSession, user_id: uuid.UUID, days: int) -> None:
     """
     Extend the user's active subscription by `days` days.
     If no active subscription exists, create a free-plan entry.
@@ -86,7 +85,11 @@ async def add_bonus_days(
     now = datetime.now(tz=timezone.utc)
 
     if subscription is not None:
-        base = subscription.expires_at if subscription.expires_at and subscription.expires_at > now else now
+        base = (
+            subscription.expires_at
+            if subscription.expires_at and subscription.expires_at > now
+            else now
+        )
         await session.execute(
             update(Subscription)
             .where(Subscription.id == subscription.id)
@@ -113,6 +116,7 @@ async def add_bonus_days(
 # Plans
 # ---------------------------------------------------------------------------
 
+
 async def get_plan(session: AsyncSession, plan_name: str) -> Optional[Plan]:
     """Return a plan by name (e.g. 'free', 'premium', 'business')."""
     result = await session.execute(
@@ -132,6 +136,7 @@ async def get_all_active_plans(session: AsyncSession) -> list[Plan]:
 # ---------------------------------------------------------------------------
 # Payments
 # ---------------------------------------------------------------------------
+
 
 async def create_payment(
     session: AsyncSession,
@@ -177,7 +182,9 @@ async def get_payments(
     offset: int = 0,
 ) -> list[Payment]:
     """Return payments filtered by optional status."""
-    stmt = select(Payment).order_by(Payment.created_at.desc()).limit(limit).offset(offset)
+    stmt = (
+        select(Payment).order_by(Payment.created_at.desc()).limit(limit).offset(offset)
+    )
     if status:
         stmt = stmt.where(Payment.status == status)
     result = await session.execute(stmt)
@@ -187,6 +194,7 @@ async def get_payments(
 # ---------------------------------------------------------------------------
 # Usage logs
 # ---------------------------------------------------------------------------
+
 
 async def get_usage_count(
     session: AsyncSession,

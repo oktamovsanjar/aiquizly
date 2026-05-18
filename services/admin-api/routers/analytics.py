@@ -1,13 +1,13 @@
 """Analytics — statistika va o'sish ko'rsatkichlari."""
+
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from deps import require_auth, get_db
-from models import User, Quiz, Payment, Subscription, ImportLog
+from models import User, Quiz, Payment, Subscription
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -20,46 +20,72 @@ async def overview(db: AsyncSession = Depends(get_db)):
     week_ago = now - timedelta(days=7)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    total_users = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
-    new_users_week = (await db.execute(
-        select(func.count()).select_from(User).where(User.created_at >= week_ago)
-    )).scalar() or 0
-    new_users_today = (await db.execute(
-        select(func.count()).select_from(User).where(User.created_at >= today)
-    )).scalar() or 0
-    active_users_week = (await db.execute(
-        select(func.count()).select_from(User).where(User.last_active_at >= week_ago)
-    )).scalar() or 0
-    blocked_users = (await db.execute(
-        select(func.count()).select_from(User).where(User.is_bot_blocked.is_(True))
-    )).scalar() or 0
-
-    total_quizzes = (await db.execute(
-        select(func.count()).select_from(Quiz).where(Quiz.deleted_at.is_(None))
-    )).scalar() or 0
-    public_quizzes = (await db.execute(
-        select(func.count()).select_from(Quiz).where(
-            Quiz.deleted_at.is_(None), Quiz.visibility == "public"
+    total_users = (
+        await db.execute(select(func.count()).select_from(User))
+    ).scalar() or 0
+    new_users_week = (
+        await db.execute(
+            select(func.count()).select_from(User).where(User.created_at >= week_ago)
         )
-    )).scalar() or 0
-    quizzes_week = (await db.execute(
-        select(func.count()).select_from(Quiz).where(
-            Quiz.deleted_at.is_(None), Quiz.created_at >= week_ago
+    ).scalar() or 0
+    new_users_today = (
+        await db.execute(
+            select(func.count()).select_from(User).where(User.created_at >= today)
         )
-    )).scalar() or 0
-
-    active_subs = (await db.execute(
-        select(func.count()).select_from(Subscription).where(Subscription.status == "active")
-    )).scalar() or 0
-
-    total_revenue = (await db.execute(
-        select(func.sum(Payment.amount)).where(Payment.status == "completed")
-    )).scalar() or 0
-    revenue_month = (await db.execute(
-        select(func.sum(Payment.amount)).where(
-            Payment.status == "completed", Payment.created_at >= month_ago
+    ).scalar() or 0
+    active_users_week = (
+        await db.execute(
+            select(func.count())
+            .select_from(User)
+            .where(User.last_active_at >= week_ago)
         )
-    )).scalar() or 0
+    ).scalar() or 0
+    blocked_users = (
+        await db.execute(
+            select(func.count()).select_from(User).where(User.is_bot_blocked.is_(True))
+        )
+    ).scalar() or 0
+
+    total_quizzes = (
+        await db.execute(
+            select(func.count()).select_from(Quiz).where(Quiz.deleted_at.is_(None))
+        )
+    ).scalar() or 0
+    public_quizzes = (
+        await db.execute(
+            select(func.count())
+            .select_from(Quiz)
+            .where(Quiz.deleted_at.is_(None), Quiz.visibility == "public")
+        )
+    ).scalar() or 0
+    quizzes_week = (
+        await db.execute(
+            select(func.count())
+            .select_from(Quiz)
+            .where(Quiz.deleted_at.is_(None), Quiz.created_at >= week_ago)
+        )
+    ).scalar() or 0
+
+    active_subs = (
+        await db.execute(
+            select(func.count())
+            .select_from(Subscription)
+            .where(Subscription.status == "active")
+        )
+    ).scalar() or 0
+
+    total_revenue = (
+        await db.execute(
+            select(func.sum(Payment.amount)).where(Payment.status == "completed")
+        )
+    ).scalar() or 0
+    revenue_month = (
+        await db.execute(
+            select(func.sum(Payment.amount)).where(
+                Payment.status == "completed", Payment.created_at >= month_ago
+            )
+        )
+    ).scalar() or 0
 
     return {
         "users": {

@@ -2,6 +2,7 @@
 Limit checking logic.
 ONLY this module performs limit checks — nowhere else in the codebase.
 """
+
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -16,13 +17,12 @@ from db.queries import (
 )
 from db.models import Subscription
 
-
 _REDIS_TTL_SECONDS = 35 * 24 * 3600  # 35 days — full month + buffer
 
 
 class LimitChecker:
     FREE_PLAN = {
-        "file_upload": 3,          # per month
+        "file_upload": 3,  # per month
         "max_questions_per_file": 50,
         "quiz_retention_days": 7,
     }

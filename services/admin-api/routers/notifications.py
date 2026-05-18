@@ -1,4 +1,5 @@
 """Bildirishnomalar va broadcast."""
+
 import json
 import logging
 import os
@@ -23,6 +24,7 @@ async def _push_to_redis(payload: dict) -> None:
     """Redis notification queue ga xabar qo'shadi."""
     try:
         import redis.asyncio as aioredis
+
         client = aioredis.from_url(REDIS_URL, decode_responses=True)
         await client.rpush(NOTIFICATION_QUEUE, json.dumps(payload))
         await client.aclose()
@@ -32,6 +34,7 @@ async def _push_to_redis(payload: dict) -> None:
 
 
 # ── Notification templates ──────────────────────────────────────────────────
+
 
 @router.get("/templates", dependencies=[Depends(require_auth)])
 async def list_templates(db: AsyncSession = Depends(get_db)):
@@ -59,17 +62,23 @@ class TemplateUpdate(BaseModel):
 
 
 @router.patch("/templates/{slug}", dependencies=[Depends(require_auth)])
-async def update_template(slug: str, body: TemplateUpdate, db: AsyncSession = Depends(get_db)):
-    tmpl = (await db.execute(
-        select(NotificationTemplate).where(NotificationTemplate.slug == slug)
-    )).scalar_one_or_none()
+async def update_template(
+    slug: str, body: TemplateUpdate, db: AsyncSession = Depends(get_db)
+):
+    tmpl = (
+        await db.execute(
+            select(NotificationTemplate).where(NotificationTemplate.slug == slug)
+        )
+    ).scalar_one_or_none()
     if not tmpl:
         raise HTTPException(status_code=404, detail="Shablon topilmadi")
 
     values = body.model_dump(exclude_none=True)
     if values:
         await db.execute(
-            update(NotificationTemplate).where(NotificationTemplate.slug == slug).values(**values)
+            update(NotificationTemplate)
+            .where(NotificationTemplate.slug == slug)
+            .values(**values)
         )
         await db.commit()
     return {"slug": slug, "updated": True}
@@ -77,11 +86,12 @@ async def update_template(slug: str, body: TemplateUpdate, db: AsyncSession = De
 
 # ── Broadcast ──────────────────────────────────────────────────────────────
 
+
 class BroadcastRequest(BaseModel):
     text: str
-    user_ids: Optional[List[int]] = None   # telegram_id lar; None = hammaga
+    user_ids: Optional[List[int]] = None  # telegram_id lar; None = hammaga
     parse_mode: str = "HTML"
-    language_code: Optional[str] = None    # faqat shu tildagi userlarga
+    language_code: Optional[str] = None  # faqat shu tildagi userlarga
 
 
 @router.post("/broadcast", dependencies=[Depends(require_auth)])
@@ -105,17 +115,20 @@ async def broadcast(body: BroadcastRequest, db: AsyncSession = Depends(get_db)):
         return {"queued": 0, "message": "Muvofiq foydalanuvchi topilmadi"}
 
     for tg_id in tg_ids:
-        await _push_to_redis({
-            "user_telegram_id": tg_id,
-            "text": body.text,
-            "parse_mode": body.parse_mode,
-        })
+        await _push_to_redis(
+            {
+                "user_telegram_id": tg_id,
+                "text": body.text,
+                "parse_mode": body.parse_mode,
+            }
+        )
 
     logger.info("Broadcast: %d ta foydalanuvchiga yuborildi", len(tg_ids))
     return {"queued": len(tg_ids)}
 
 
 # ── Notification tarixi ────────────────────────────────────────────────────
+
 
 @router.get("", dependencies=[Depends(require_auth)])
 async def list_notifications(
@@ -133,9 +146,17 @@ async def list_notifications(
         count_stmt = count_stmt.where(Notification.status == status)
 
     total = (await db.execute(count_stmt)).scalar() or 0
-    notifs = (await db.execute(
-        stmt.order_by(Notification.created_at.desc()).offset(offset).limit(limit)
-    )).scalars().all()
+    notifs = (
+        (
+            await db.execute(
+                stmt.order_by(Notification.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     return {
         "notifications": [

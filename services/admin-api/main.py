@@ -1,4 +1,5 @@
 """Admin API — Quiz Bot tizim boshqaruvi."""
+
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -12,12 +13,14 @@ from sqlalchemy import text
 from deps import engine, AsyncSessionLocal
 from routers import router
 
-logging.basicConfig(level=getattr(logging, os.getenv("LOG_LEVEL", "info").upper(), logging.INFO))
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "info").upper(), logging.INFO)
+)
 logger = logging.getLogger(__name__)
 
 ALLOWED_ORIGINS = os.getenv(
     "ADMIN_CORS_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173"
+    "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173",
 ).split(",")
 
 
@@ -51,7 +54,9 @@ app.include_router(router)
 # ── Static frontend ──────────────────────────────────────────────
 _FRONTEND = os.path.join(os.path.dirname(__file__), "frontend")
 if os.path.isdir(_FRONTEND):
-    app.mount("/static", StaticFiles(directory=os.path.join(_FRONTEND, "src")), name="static")
+    app.mount(
+        "/static", StaticFiles(directory=os.path.join(_FRONTEND, "src")), name="static"
+    )
 
     @app.get("/", include_in_schema=False)
     async def serve_index():
@@ -77,5 +82,6 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.getenv("ADMIN_API_PORT", "8004"))
     uvicorn.run(app, host="0.0.0.0", port=port)

@@ -2,11 +2,12 @@
 SQLAlchemy 2.0 async models for subscription service.
 Tables: plans, subscriptions, payments, usage_logs
 """
+
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Integer, String, Text, ForeignKey, TIMESTAMP, UniqueConstraint
+from sqlalchemy import Boolean, Integer, String, ForeignKey, TIMESTAMP, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -26,7 +27,9 @@ class Plan(Base):
     price_monthly: Mapped[int] = mapped_column(Integer, default=0)
     price_yearly: Mapped[int] = mapped_column(Integer, default=0)
     max_uploads_per_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    max_questions_per_file: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_questions_per_file: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
     can_share_group: Mapped[bool] = mapped_column(Boolean, default=False)
     can_create_quiz_group: Mapped[bool] = mapped_column(Boolean, default=False)
     can_publish: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -55,7 +58,9 @@ class Subscription(Base):
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     started_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP, nullable=True, index=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP, nullable=True, index=True
+    )
     auto_renew: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP, server_default=func.now(), nullable=False
@@ -83,7 +88,9 @@ class Payment(Base):
         UUID(as_uuid=True), ForeignKey("subscriptions.id"), nullable=True
     )
     provider: Mapped[str] = mapped_column(String(20), nullable=False)
-    provider_payment_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    provider_payment_id: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(10), default="UZS")
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
@@ -102,9 +109,7 @@ class UsageLog(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     action: Mapped[str] = mapped_column(String(50), nullable=False)
     month: Mapped[str] = mapped_column(String(7), nullable=False)  # '2026-05'
     count: Mapped[int] = mapped_column(Integer, default=1)
@@ -113,5 +118,7 @@ class UsageLog(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("user_id", "action", "month", name="idx_usage_user_action_month"),
+        UniqueConstraint(
+            "user_id", "action", "month", name="idx_usage_user_action_month"
+        ),
     )

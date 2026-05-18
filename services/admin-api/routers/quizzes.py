@@ -1,8 +1,9 @@
 """Quiz boshqaruvi."""
+
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,9 +47,15 @@ async def list_quizzes(
         count_stmt = count_stmt.where(Quiz.source_type == source_type)
 
     total = (await db.execute(count_stmt)).scalar() or 0
-    quizzes = (await db.execute(
-        stmt.order_by(Quiz.created_at.desc()).offset(offset).limit(limit)
-    )).scalars().all()
+    quizzes = (
+        (
+            await db.execute(
+                stmt.order_by(Quiz.created_at.desc()).offset(offset).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     return {
         "quizzes": [_quiz_dict(q) for q in quizzes],
@@ -61,6 +68,7 @@ async def list_quizzes(
 @router.delete("/{quiz_id}", dependencies=[Depends(require_auth)])
 async def delete_quiz(quiz_id: str, db: AsyncSession = Depends(get_db)):
     import uuid as uuid_mod
+
     await db.execute(
         update(Quiz)
         .where(Quiz.id == uuid_mod.UUID(quiz_id))
@@ -73,6 +81,7 @@ async def delete_quiz(quiz_id: str, db: AsyncSession = Depends(get_db)):
 @router.patch("/{quiz_id}/restore", dependencies=[Depends(require_auth)])
 async def restore_quiz(quiz_id: str, db: AsyncSession = Depends(get_db)):
     import uuid as uuid_mod
+
     await db.execute(
         update(Quiz)
         .where(Quiz.id == uuid_mod.UUID(quiz_id))
@@ -89,6 +98,7 @@ async def set_visibility(
     db: AsyncSession = Depends(get_db),
 ):
     import uuid as uuid_mod
+
     await db.execute(
         update(Quiz)
         .where(Quiz.id == uuid_mod.UUID(quiz_id))
@@ -115,27 +125,33 @@ async def list_import_logs(
         count_stmt = count_stmt.where(ImportLog.status == status)
 
     total = (await db.execute(count_stmt)).scalar() or 0
-    logs = (await db.execute(
-        stmt.order_by(ImportLog.created_at.desc()).offset(offset).limit(limit)
-    )).scalars().all()
+    logs = (
+        (
+            await db.execute(
+                stmt.order_by(ImportLog.created_at.desc()).offset(offset).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     return {
         "logs": [
             {
-                "id": str(l.id),
-                "user_id": str(l.user_id) if l.user_id else None,
-                "quiz_id": str(l.quiz_id) if l.quiz_id else None,
-                "file_name": l.file_name,
-                "file_type": l.file_type,
-                "file_size": l.file_size,
-                "status": l.status,
-                "total_detected": l.total_detected,
-                "total_imported": l.total_imported,
-                "error_message": l.error_message,
-                "processing_time_ms": l.processing_time_ms,
-                "created_at": l.created_at.isoformat() if l.created_at else None,
+                "id": str(log.id),
+                "user_id": str(log.user_id) if log.user_id else None,
+                "quiz_id": str(log.quiz_id) if log.quiz_id else None,
+                "file_name": log.file_name,
+                "file_type": log.file_type,
+                "file_size": log.file_size,
+                "status": log.status,
+                "total_detected": log.total_detected,
+                "total_imported": log.total_imported,
+                "error_message": log.error_message,
+                "processing_time_ms": log.processing_time_ms,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
             }
-            for l in logs
+            for log in logs
         ],
         "total": total,
         "page": page,

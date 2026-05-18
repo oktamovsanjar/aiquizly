@@ -1,6 +1,7 @@
 """
 Async DB engine and session factory for the subscription service.
 """
+
 import os
 from collections.abc import AsyncGenerator
 

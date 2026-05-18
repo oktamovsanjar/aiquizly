@@ -18,8 +18,8 @@ Environment variables required:
   PAYME_BASE_URL         – checkout base URL (default: https://checkout.paycom.uz)
   PAYME_API_URL          – server-to-server API URL
 """
+
 import base64
-import hashlib
 import hmac
 import json
 import os
@@ -62,8 +62,8 @@ def create_invoice(
         "m": PAYME_MERCHANT_ID,
         "ac.order_id": order_id,
         "ac.user_id": user_id,
-        "a": amount_uzs,   # amount in tiyin
-        "l": "uz",         # language
+        "a": amount_uzs,  # amount in tiyin
+        "l": "uz",  # language
     }
     # Payme encodes params as key=value pairs joined by ";" then base64-encodes
     param_str = ";".join(f"{k}={v}" for k, v in params.items())
@@ -85,9 +85,6 @@ async def check_payment_status(order_id: str) -> str:
         "method": "CheckTransaction",
         "params": {"id": order_id},
     }
-    auth = base64.b64encode(
-        f"Paycom:{PAYME_MERCHANT_KEY}".encode()
-    ).decode()
     headers = {
         "X-Auth": f"{PAYME_MERCHANT_ID}:{PAYME_MERCHANT_KEY}",
         "Content-Type": "application/json",

@@ -7,18 +7,18 @@ Testlar checker.py mantiqini tekshiradi:
   - Redis cache miss → DB fallback
   - Increment logikasi
 """
+
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from limits.checker import LimitChecker
-
 
 # ──────────────────────────── Fixtures ────────────────────────────
 
@@ -52,7 +52,9 @@ async def test_check_free_plan_under_limit():
 
     user_id = str(uuid.uuid4())
 
-    with patch("limits.checker.get_active_subscription", new_callable=AsyncMock) as mock_sub:
+    with patch(
+        "limits.checker.get_active_subscription", new_callable=AsyncMock
+    ) as mock_sub:
         mock_sub.return_value = None  # Free plan
         result = await checker.check(session, redis, user_id, "file_upload")
 
@@ -71,7 +73,9 @@ async def test_check_free_plan_at_limit():
 
     user_id = str(uuid.uuid4())
 
-    with patch("limits.checker.get_active_subscription", new_callable=AsyncMock) as mock_sub:
+    with patch(
+        "limits.checker.get_active_subscription", new_callable=AsyncMock
+    ) as mock_sub:
         mock_sub.return_value = None
         result = await checker.check(session, redis, user_id, "file_upload")
 
@@ -95,7 +99,9 @@ async def test_check_premium_unlimited():
     mock_plan.name = "premium"
     mock_subscription.plan = mock_plan
 
-    with patch("limits.checker.get_active_subscription", new_callable=AsyncMock) as mock_sub:
+    with patch(
+        "limits.checker.get_active_subscription", new_callable=AsyncMock
+    ) as mock_sub:
         mock_sub.return_value = mock_subscription
         result = await checker.check(session, redis, user_id, "file_upload")
 
@@ -118,7 +124,9 @@ async def test_check_business_unlimited():
     mock_plan.name = "business"
     mock_subscription.plan = mock_plan
 
-    with patch("limits.checker.get_active_subscription", new_callable=AsyncMock) as mock_sub:
+    with patch(
+        "limits.checker.get_active_subscription", new_callable=AsyncMock
+    ) as mock_sub:
         mock_sub.return_value = mock_subscription
         result = await checker.check(session, redis, user_id, "file_upload")
 
@@ -136,7 +144,9 @@ async def test_check_unknown_action_allowed():
 
     user_id = str(uuid.uuid4())
 
-    with patch("limits.checker.get_active_subscription", new_callable=AsyncMock) as mock_sub:
+    with patch(
+        "limits.checker.get_active_subscription", new_callable=AsyncMock
+    ) as mock_sub:
         mock_sub.return_value = None  # Free plan
         result = await checker.check(session, redis, user_id, "unknown_action")
 
@@ -153,9 +163,13 @@ async def test_check_redis_cache_miss_fallback_to_db():
 
     user_id = str(uuid.uuid4())
 
-    with patch("limits.checker.get_active_subscription", new_callable=AsyncMock) as mock_sub:
+    with patch(
+        "limits.checker.get_active_subscription", new_callable=AsyncMock
+    ) as mock_sub:
         mock_sub.return_value = None
-        with patch("limits.checker.get_usage_count", new_callable=AsyncMock) as mock_count:
+        with patch(
+            "limits.checker.get_usage_count", new_callable=AsyncMock
+        ) as mock_count:
             mock_count.return_value = 1  # DB da 1 ta
             result = await checker.check(session, redis, user_id, "file_upload")
 

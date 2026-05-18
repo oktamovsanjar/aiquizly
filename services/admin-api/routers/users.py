@@ -1,4 +1,5 @@
 """Foydalanuvchilar boshqaruvi."""
+
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -30,7 +31,9 @@ def _user_dict(u: User) -> dict:
 async def list_users(
     page: int = Query(1, ge=1),
     limit: int = Query(50, le=200),
-    search: Optional[str] = Query(None, description="Username yoki telegram_id bo'yicha qidirish"),
+    search: Optional[str] = Query(
+        None, description="Username yoki telegram_id bo'yicha qidirish"
+    ),
     is_blocked: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -41,7 +44,9 @@ async def list_users(
     if search:
         try:
             tg_id = int(search)
-            filter_clause = or_(User.telegram_id == tg_id, User.username.ilike(f"%{search}%"))
+            filter_clause = or_(
+                User.telegram_id == tg_id, User.username.ilike(f"%{search}%")
+            )
         except ValueError:
             filter_clause = User.username.ilike(f"%{search}%")
         stmt = stmt.where(filter_clause)
@@ -52,9 +57,15 @@ async def list_users(
         count_stmt = count_stmt.where(User.is_bot_blocked.is_(is_blocked))
 
     total = (await db.execute(count_stmt)).scalar() or 0
-    users = (await db.execute(
-        stmt.order_by(User.created_at.desc()).offset(offset).limit(limit)
-    )).scalars().all()
+    users = (
+        (
+            await db.execute(
+                stmt.order_by(User.created_at.desc()).offset(offset).limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     return {
         "users": [_user_dict(u) for u in users],
@@ -67,38 +78,50 @@ async def list_users(
 @router.get("/{user_id}", dependencies=[Depends(require_auth)])
 async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):
     import uuid as uuid_mod
-    user = (await db.execute(
-        select(User).where(User.id == uuid_mod.UUID(user_id))
-    )).scalar_one_or_none()
+
+    user = (
+        await db.execute(select(User).where(User.id == uuid_mod.UUID(user_id)))
+    ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
 
     # Qo'shimcha ma'lumotlar
-    quiz_count = (await db.execute(
-        select(func.count()).select_from(Quiz).where(
-            Quiz.owner_id == user.id, Quiz.deleted_at.is_(None)
+    quiz_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(Quiz)
+            .where(Quiz.owner_id == user.id, Quiz.deleted_at.is_(None))
         )
-    )).scalar() or 0
+    ).scalar() or 0
 
-    sub = (await db.execute(
-        select(Subscription).where(
-            Subscription.user_id == user.id, Subscription.status == "active"
-        ).order_by(Subscription.started_at.desc()).limit(1)
-    )).scalar_one_or_none()
-
-    total_paid = (await db.execute(
-        select(func.sum(Payment.amount)).where(
-            Payment.user_id == user.id, Payment.status == "completed"
+    sub = (
+        await db.execute(
+            select(Subscription)
+            .where(Subscription.user_id == user.id, Subscription.status == "active")
+            .order_by(Subscription.started_at.desc())
+            .limit(1)
         )
-    )).scalar() or 0
+    ).scalar_one_or_none()
+
+    total_paid = (
+        await db.execute(
+            select(func.sum(Payment.amount)).where(
+                Payment.user_id == user.id, Payment.status == "completed"
+            )
+        )
+    ).scalar() or 0
 
     data = _user_dict(user)
     data["quiz_count"] = quiz_count
     data["total_paid_uzs"] = total_paid
-    data["subscription"] = {
-        "status": sub.status,
-        "expires_at": sub.expires_at.isoformat() if sub.expires_at else None,
-    } if sub else None
+    data["subscription"] = (
+        {
+            "status": sub.status,
+            "expires_at": sub.expires_at.isoformat() if sub.expires_at else None,
+        }
+        if sub
+        else None
+    )
     return data
 
 
@@ -106,9 +129,10 @@ async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):
 async def toggle_block(user_id: str, db: AsyncSession = Depends(get_db)):
     """Foydalanuvchini bloklash / blokdan chiqarish."""
     import uuid as uuid_mod
-    user = (await db.execute(
-        select(User).where(User.id == uuid_mod.UUID(user_id))
-    )).scalar_one_or_none()
+
+    user = (
+        await db.execute(select(User).where(User.id == uuid_mod.UUID(user_id)))
+    ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
 
