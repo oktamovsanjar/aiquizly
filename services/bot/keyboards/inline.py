@@ -43,7 +43,7 @@ def quiz_list_keyboard(
     """Render a list of quiz items as buttons (max 5 per page)."""
     rows: list[list[InlineKeyboardButton]] = []
     for q in quizzes:
-        label = f"📋 {q.get('name', 'Quiz')} ({q.get('total_questions', '?')} savol)"
+        label = f"📋 {q.get('title', q.get('name', 'Quiz'))} ({q.get('total_questions', '?')} savol)"
         rows.append(
             [InlineKeyboardButton(text=label, callback_data=f"qb:quiz:{q['id']}")]
         )
@@ -58,6 +58,63 @@ def quiz_list_keyboard(
 
     rows.append([InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def my_quiz_list_keyboard(
+    quizzes: list[dict],
+    page: int = 1,
+    has_next: bool = False,
+) -> InlineKeyboardMarkup:
+    """User's own quizzes — har bir quiz uchun ▶️ va ⚙️ tugmalari."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for q in quizzes:
+        qid = q["id"]
+        title = q.get("title", q.get("name", "Quiz"))
+        count = q.get("total_questions", "?")
+        vis = "🌐" if q.get("visibility") == "public" else "🔒"
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{vis} {title[:28]} ({count})",
+                callback_data=f"qb:quiz:{qid}",
+            ),
+            InlineKeyboardButton(text="⚙️", callback_data=f"qb:manage:{qid}"),
+        ])
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 1:
+        nav.append(InlineKeyboardButton(text="← Oldingi", callback_data=f"qb:mypage:{page - 1}"))
+    if has_next:
+        nav.append(InlineKeyboardButton(text="Keyingi →", callback_data=f"qb:mypage:{page + 1}"))
+    if nav:
+        rows.append(nav)
+
+    rows.append([
+        InlineKeyboardButton(text="📤 Yangi quiz", callback_data="up:menu"),
+        InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def quiz_manage_keyboard(quiz_id: str, is_public: bool) -> InlineKeyboardMarkup:
+    """Quiz boshqaruv menyusi: o'ynash, tahrirlash, ko'rinish, o'chirish."""
+    vis_text = "🔒 Yopiq qilish" if is_public else "🌐 Ochiq qilish"
+    return _kb(
+        [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:quiz:{quiz_id}")],
+        [InlineKeyboardButton(text="📝 Savollarni tahrirlash", callback_data=f"rev:start:{quiz_id}")],
+        [InlineKeyboardButton(text="✏️ Nomini o'zgartirish", callback_data=f"qb:rename:{quiz_id}")],
+        [InlineKeyboardButton(text=vis_text, callback_data=f"qb:vis:{quiz_id}")],
+        [InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"qb:del_quiz:{quiz_id}")],
+        [InlineKeyboardButton(text="◀ Orqaga", callback_data="qb:my")],
+    )
+
+
+def quiz_delete_confirm_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
+    return _kb(
+        [
+            InlineKeyboardButton(text="🗑 Ha, o'chir", callback_data=f"qb:cdel_quiz:{quiz_id}"),
+            InlineKeyboardButton(text="❌ Bekor", callback_data=f"qb:manage:{quiz_id}"),
+        ]
+    )
 
 
 def set_select_keyboard(sets: list[dict], quiz_id: str) -> InlineKeyboardMarkup:
@@ -91,18 +148,20 @@ def time_select_keyboard(quiz_id: str, set_number: int) -> InlineKeyboardMarkup:
     )
 
 
-def quiz_start_keyboard(quiz_id: str, set_number: int, time_sec: int) -> InlineKeyboardMarkup:
+def quiz_start_keyboard(
+    quiz_id: str,
+    set_number: int,
+    time_sec: int,
+    shuffle_q: bool = False,
+    shuffle_o: bool = False,
+) -> InlineKeyboardMarkup:
+    sq = "✅" if shuffle_q else "❌"
+    so = "✅" if shuffle_o else "❌"
     return _kb(
-        [
-            InlineKeyboardButton(
-                text="▶️ Boshlash",
-                callback_data=f"qp:start:{quiz_id}:{set_number}:{time_sec}",
-            ),
-            InlineKeyboardButton(
-                text="⏱ Vaqtni o'zgartirish",
-                callback_data=f"qp:change_time:{quiz_id}:{set_number}",
-            ),
-        ],
+        [InlineKeyboardButton(text="▶️ Boshlash", callback_data=f"qp:start:{quiz_id}:{set_number}:{time_sec}")],
+        [InlineKeyboardButton(text=f"🔀 Savollar: {sq}", callback_data=f"qp:toggle_sq:{quiz_id}:{set_number}:{time_sec}")],
+        [InlineKeyboardButton(text=f"🔀 Variantlar: {so}", callback_data=f"qp:toggle_so:{quiz_id}:{set_number}:{time_sec}")],
+        [InlineKeyboardButton(text="⏱ Vaqtni o'zgartirish", callback_data=f"qp:change_time:{quiz_id}:{set_number}")],
         [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
     )
 
@@ -112,24 +171,15 @@ def quiz_start_keyboard(quiz_id: str, set_number: int, time_sec: int) -> InlineK
 
 def stop_quiz_keyboard(current: int, total: int) -> InlineKeyboardMarkup:
     return _kb(
-        [
-            InlineKeyboardButton(
-                text="⏹ To'xtatish va natija ko'rish", callback_data="qp:stop_result"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="💾 Saqlash (keyinroq davom)", callback_data="qp:stop_save"
-            )
-        ],
         [InlineKeyboardButton(text="▶️ Davom etish", callback_data="qp:continue")],
+        [InlineKeyboardButton(text="⏹ To'xtatish va natija ko'rish", callback_data="qp:stop_result")],
     )
 
 
 def pause_quiz_keyboard() -> InlineKeyboardMarkup:
     return _kb(
         [InlineKeyboardButton(text="▶️ Davom etish", callback_data="qp:continue")],
-        [InlineKeyboardButton(text="💾 Saqlash va chiqish", callback_data="qp:pause_save")],
+        [InlineKeyboardButton(text="⏹ Tugatish", callback_data="qp:pause_finish")],
     )
 
 
@@ -421,4 +471,61 @@ def group_result_keyboard() -> InlineKeyboardMarkup:
     return _kb(
         [InlineKeyboardButton(text="🔄 Yana o'ynash", callback_data="tg:replay")],
         [InlineKeyboardButton(text="📊 Batafsil", callback_data="tg:detail")],
+    )
+
+
+# ──────────────────────────── Review (quiz tahrirlash) ────────────────────────
+# Callback prefix: rev:
+
+OPTION_LABELS = ["A", "B", "C", "D", "E", "F"]
+
+
+def review_nav_keyboard(q_idx: int, total: int) -> InlineKeyboardMarkup:
+    """Savol ko'rish/tahrirlash ekrani uchun asosiy klaviatura."""
+    nav = []
+    if q_idx > 0:
+        nav.append(InlineKeyboardButton(text="◀", callback_data=f"rev:nav:{q_idx - 1}"))
+    nav.append(InlineKeyboardButton(text=f"{q_idx + 1}/{total}", callback_data="rev:noop"))
+    if q_idx < total - 1:
+        nav.append(InlineKeyboardButton(text="▶", callback_data=f"rev:nav:{q_idx + 1}"))
+
+    return _kb(
+        nav,
+        [
+            InlineKeyboardButton(text="✏️ Matn", callback_data=f"rev:etxt:{q_idx}"),
+            InlineKeyboardButton(text="🔄 Javob", callback_data=f"rev:eans:{q_idx}"),
+        ],
+        [InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"rev:del:{q_idx}")],
+        [InlineKeyboardButton(text="✅ Tayyor", callback_data="rev:done")],
+    )
+
+
+def review_answer_keyboard(options: list[str], q_idx: int) -> InlineKeyboardMarkup:
+    """To'g'ri javobni tanlash uchun variantlar ro'yxati."""
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{OPTION_LABELS[i]}) {opt[:35]}",
+            callback_data=f"rev:sans:{i}:{q_idx}",
+        )]
+        for i, opt in enumerate(options)
+    ]
+    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data=f"rev:nav:{q_idx}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def review_delete_confirm_keyboard(q_idx: int) -> InlineKeyboardMarkup:
+    return _kb(
+        [
+            InlineKeyboardButton(text="🗑 Ha, o'chir", callback_data=f"rev:cdel:{q_idx}"),
+            InlineKeyboardButton(text="❌ Yo'q", callback_data=f"rev:nav:{q_idx}"),
+        ]
+    )
+
+
+def quiz_done_with_review_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
+    """Quiz tayyor bo'lganda ko'rsatiladigan tugmalar."""
+    return _kb(
+        [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:play:{quiz_id}")],
+        [InlineKeyboardButton(text="📝 Tahrirlash", callback_data=f"rev:start:{quiz_id}")],
+        [InlineKeyboardButton(text="📤 Yana yuklash", callback_data="up:retry")],
     )

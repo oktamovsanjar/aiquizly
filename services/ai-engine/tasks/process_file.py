@@ -20,11 +20,35 @@ celery_app.conf.result_serializer = "json"
 celery_app.conf.accept_content = ["json"]
 celery_app.conf.task_track_started = True
 
+# ── DB engine singleton — worker process da bir marta yaratiladi ──────────────
+# har task uchun yangi engine/pool emas, bitta engine qayta ishlatiladi.
+_db_engine = None
+_AsyncSessionLocal = None
+
+
+def _get_session_factory():
+    """Worker process da birinchi chaqiriqda engine yaratadi, keyin qayta ishlatadi."""
+    global _db_engine, _AsyncSessionLocal
+    if _db_engine is None:
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.orm import sessionmaker
+
+        db_url = settings.database_url
+        if "postgresql://" in db_url and "asyncpg" not in db_url:
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql+asyncpg://")
+
+        _db_engine = create_async_engine(db_url, pool_size=5, max_overflow=2, echo=False)
+        _AsyncSessionLocal = sessionmaker(_db_engine, class_=AsyncSession, expire_on_commit=False)
+        logger.info("DB engine yaratildi (worker singleton)")
+    return _AsyncSessionLocal
+
 
 @celery_app.task(bind=True, max_retries=3, name="process_file")
 def process_file_task(
     self,
-    file_content_hex: str,
+    file_url: str,
     file_name: str,
     user_id: str,
     import_log_id: Optional[str] = None,
@@ -33,12 +57,13 @@ def process_file_task(
 ) -> Dict[str, Any]:
     """
     To'liq AI pipeline Celery task sifatida.
-    file_content_hex — bytes ni hex string sifatida.
+    file_url — faylni yuklab olish uchun URL (Telegram yoki boshqa).
+    Katta faylni Redis broker orqali o'tkazish o'rniga URL yuboriladi.
     """
     try:
-        return asyncio.get_event_loop().run_until_complete(
+        return asyncio.run(
             _process_file_async(
-                file_content_hex=file_content_hex,
+                file_url=file_url,
                 file_name=file_name,
                 user_id=user_id,
                 import_log_id=import_log_id,
@@ -51,92 +76,92 @@ def process_file_task(
         raise self.retry(exc=exc, countdown=10)
 
 
+def _chunk_text(text: str, chunk_size: int = 8000, overlap: int = 200) -> list:
+    """Matnni teng bo'laklarga bo'ladi. AI har bir bo'lakdan savollarni o'zi ajratadi."""
+    from dataclasses import dataclass, field
+
+    @dataclass
+    class _Block:
+        question: str = ""
+        options: list = field(default_factory=list)
+        raw_text: str = ""
+
+    chunks = []
+    i = 0
+    while i < len(text):
+        chunk = text[i:i + chunk_size]
+        chunks.append(_Block(raw_text=chunk))
+        i += chunk_size - overlap
+    return chunks
+
+
 async def _process_file_async(
-    file_content_hex: str,
+    file_url: str,
     file_name: str,
     user_id: str,
     import_log_id: Optional[str],
     quiz_group_id: Optional[str],
     tags: List[str],
 ) -> Dict[str, Any]:
+    import httpx
     from parsers import detect_format, parse_word, parse_pdf, parse_excel, parse_text
-    from boundary import detect_boundaries
-    from boundary.splitter import QuestionBlock
     from ai import AIStructurer, validate_questions
-    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-    from sqlalchemy.orm import sessionmaker
 
     start_time = time.time()
-
-    file_content = bytes.fromhex(file_content_hex)
-    file_hash = hashlib.sha256(file_content).hexdigest()
-
     logger.info("Fayl qayta ishlash boshlandi: %s, user: %s", file_name, user_id)
 
-    # DB ulanish
-    db_engine = create_async_engine(
-        settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
-        echo=False,
-    )
-    AsyncSessionLocal = sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    # Faylni yuklab olish (URL dan — Telegram yoki boshqa manba)
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(file_url)
+        resp.raise_for_status()
+        file_content = resp.content
 
-    try:
-        # Stage 1: Format aniqlash
-        file_format = detect_format(file_name)
+    file_hash = hashlib.sha256(file_content).hexdigest()
 
-        # Stage 2: Matn chiqarish + boundary detection
-        if file_format == "word":
-            raw_text = parse_word(file_content)
-            blocks = detect_boundaries(raw_text)
-        elif file_format == "pdf":
-            raw_text = parse_pdf(file_content)
-            blocks = detect_boundaries(raw_text)
-        elif file_format == "excel":
-            questions = parse_excel(file_content)
-            questions = validate_questions(questions)
-            result = _build_result(questions, file_name, file_hash)
-            await _save_to_db(
-                AsyncSessionLocal, result, user_id, file_name, file_hash,
-                import_log_id, quiz_group_id, tags, start_time,
-            )
-            return result
-        elif file_format == "text":
-            raw_text = parse_text(file_content)
-            blocks = detect_boundaries(raw_text)
-        else:
-            raise ValueError(f"Qo'llab-quvvatlanmaydigan format: {file_format}")
+    # Worker singleton DB session factory
+    AsyncSessionLocal = _get_session_factory()
 
-        if not blocks:
-            # Boundary detection topamdi — butun matnni AI ga beramiz
-            # AI o'zi formatni aniqlab savollarni ajratsin
-            if raw_text and raw_text.strip():
-                logger.info("Boundary topilmadi, matn to'liq AI ga beriladi")
-                blocks = [QuestionBlock(
-                    question="",
-                    options=[],
-                    raw_text=raw_text[:12000],  # max token limit
-                )]
-            else:
-                result = {"total_questions": 0, "total_sets": 0, "questions": []}
-                await _save_to_db(
-                    AsyncSessionLocal, result, user_id, file_name, file_hash,
-                    import_log_id, quiz_group_id, tags, start_time,
-                )
-                return result
+    # Stage 1: Format aniqlash
+    file_format = detect_format(file_name)
 
-        # Stage 3-4: AI strukturalash (batch, parallel)
-        structurer = AIStructurer()
-        questions = await structurer.structure_blocks(blocks)
+    # Stage 2: Matn chiqarish
+    if file_format == "word":
+        raw_text = parse_word(file_content)
+    elif file_format == "pdf":
+        raw_text = parse_pdf(file_content)
+    elif file_format == "excel":
+        questions = parse_excel(file_content)
+        questions, stats = validate_questions(questions)
+        result = _build_result(questions, file_name, file_hash, stats)
+        await _save_to_db(
+            AsyncSessionLocal, result, user_id, file_name, file_hash,
+            import_log_id, quiz_group_id, tags, start_time,
+        )
+        return result
+    elif file_format == "text":
+        raw_text = parse_text(file_content)
+    else:
+        raise ValueError(f"Qo'llab-quvvatlanmaydigan format: {file_format}")
 
-        result = _build_result(questions, file_name, file_hash)
+    if not raw_text or not raw_text.strip():
+        result = {"total_questions": 0, "total_sets": 0, "questions": []}
         await _save_to_db(
             AsyncSessionLocal, result, user_id, file_name, file_hash,
             import_log_id, quiz_group_id, tags, start_time,
         )
         return result
 
-    finally:
-        await db_engine.dispose()
+    # Stage 3: Matnni bo'laklarga bo'lish va parallel AI strukturlash
+    blocks = _chunk_text(raw_text)
+    structurer = AIStructurer()
+    questions, stats = await structurer.structure_blocks(blocks)
+
+    result = _build_result(questions, file_name, file_hash, stats)
+    await _save_to_db(
+        AsyncSessionLocal, result, user_id, file_name, file_hash,
+        import_log_id, quiz_group_id, tags, start_time,
+    )
+    return result
 
 
 async def _save_to_db(
@@ -221,7 +246,7 @@ async def _save_to_db(
                     pass
 
 
-def _build_result(questions: list, file_name: str, file_hash: str) -> Dict[str, Any]:
+def _build_result(questions: list, file_name: str, file_hash: str, stats: dict = None) -> Dict[str, Any]:
     total = len(questions)
     set_size = settings.default_set_size
     total_sets = (total + set_size - 1) // set_size if total > 0 else 0
@@ -231,4 +256,5 @@ def _build_result(questions: list, file_name: str, file_hash: str) -> Dict[str, 
         "total_sets": total_sets,
         "file_hash": file_hash,
         "questions": questions,
+        "warnings": stats or {},
     }

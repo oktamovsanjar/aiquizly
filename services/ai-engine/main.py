@@ -144,9 +144,10 @@ async def process_file(req: ProcessRequest):
         await session.commit()
         log_id = str(import_log.id)
 
-    # Celery task ga yuborish — resolved UUID ni yuborish (telegram_id emas)
+    # Celery task ga yuborish — faqat URL, katta hex blob emas
+    # Worker o'zi URL dan yuklab oladi (Redis broker yukini kamaytiradi)
     task = process_file_task.delay(
-        file_content_hex=file_content.hex(),
+        file_url=req.file_url,
         file_name=req.file_name,
         user_id=resolved_user_id,  # UUID string yoki None
         import_log_id=log_id,
@@ -186,7 +187,25 @@ async def list_quizzes(
     async with AsyncSessionLocal() as session:
         from db.queries import get_user_quizzes, search_quizzes
         if user_id:
-            quizzes = await get_user_quizzes(session, user_id)
+            # telegram_id → UUID resolve
+            import uuid as _uuid
+            import sqlalchemy as _sa
+            resolved_uid = user_id
+            try:
+                _uuid.UUID(user_id)
+            except (ValueError, AttributeError):
+                try:
+                    row = await session.execute(
+                        _sa.text("SELECT id FROM users WHERE telegram_id = :tid"),
+                        {"tid": int(user_id)},
+                    )
+                    row_one = row.fetchone()
+                    resolved_uid = str(row_one[0]) if row_one else None
+                except Exception:
+                    resolved_uid = None
+            if not resolved_uid:
+                return {"quizzes": []}
+            quizzes = await get_user_quizzes(session, resolved_uid)
         else:
             quizzes = await search_quizzes(
                 session, query=q, tag_slug=tag,
@@ -255,6 +274,105 @@ async def get_quiz_questions(
             "offset": offset,
             "limit": limit,
         }
+
+
+@app.get("/quizzes/{quiz_id}/sets/{set_number}/questions")
+async def get_quiz_set_questions(
+    quiz_id: str,
+    set_number: int,
+    set_size: int = Query(20, le=100),
+):
+    """Set bo'yicha savollarni olish"""
+    offset = (set_number - 1) * set_size
+    async with AsyncSessionLocal() as session:
+        from db.queries import get_quiz_questions as _get_questions
+        questions = await _get_questions(session, quiz_id, offset=offset, limit=set_size)
+        return [
+            {
+                "id": str(q.id),
+                "question_text": q.question_text,
+                "options": q.options,
+                "correct_indices": q.correct_indices,
+                "explanation": q.explanation,
+                "sort_order": q.sort_order,
+            }
+            for q in questions
+        ]
+
+
+@app.get("/quizzes/{quiz_id}/questions/count")
+async def get_questions_count(quiz_id: str):
+    async with AsyncSessionLocal() as session:
+        from db.queries import count_questions
+        total = await count_questions(session, quiz_id)
+        return {"quiz_id": quiz_id, "total": total}
+
+
+class QuestionUpdate(BaseModel):
+    question_text: Optional[str] = None
+    options: Optional[List[str]] = None
+    correct_indices: Optional[List[int]] = None
+    explanation: Optional[str] = None
+
+
+@app.patch("/quizzes/{quiz_id}/questions/{question_id}")
+async def update_question(quiz_id: str, question_id: str, body: QuestionUpdate):
+    """Savolni tahrirlash — matn, variantlar, to'g'ri javob yoki izoh."""
+    async with AsyncSessionLocal() as session:
+        from db.queries import update_question as _update_q
+        found = await _update_q(
+            session, question_id,
+            question_text=body.question_text,
+            options=body.options,
+            correct_indices=body.correct_indices,
+            explanation=body.explanation,
+        )
+        if not found:
+            raise HTTPException(status_code=404, detail="Savol topilmadi")
+    return {"updated": True, "question_id": question_id}
+
+
+class QuizUpdate(BaseModel):
+    title: str | None = None
+    visibility: str | None = None  # "public" | "private"
+
+
+@app.patch("/quizzes/{quiz_id}")
+async def update_quiz(quiz_id: str, body: QuizUpdate):
+    """Quiz nomini yoki visibility sini yangilash."""
+    async with AsyncSessionLocal() as session:
+        from db.queries import update_quiz as _update_quiz
+        quiz = await _update_quiz(
+            session,
+            quiz_id,
+            title=body.title,
+            visibility=body.visibility,
+        )
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz topilmadi")
+    return {"id": quiz_id, "title": quiz.title, "visibility": quiz.visibility}
+
+
+@app.delete("/quizzes/{quiz_id}")
+async def delete_quiz(quiz_id: str):
+    """Quizni soft-delete qilish."""
+    async with AsyncSessionLocal() as session:
+        from db.queries import delete_quiz as _delete_quiz
+        found = await _delete_quiz(session, quiz_id)
+        if not found:
+            raise HTTPException(status_code=404, detail="Quiz topilmadi")
+    return {"deleted": True, "quiz_id": quiz_id}
+
+
+@app.delete("/quizzes/{quiz_id}/questions/{question_id}")
+async def delete_question(quiz_id: str, question_id: str):
+    """Savolni o'chirish va quiz.total_questions ni yangilash."""
+    async with AsyncSessionLocal() as session:
+        from db.queries import delete_question as _delete_q
+        found = await _delete_q(session, question_id, quiz_id)
+        if not found:
+            raise HTTPException(status_code=404, detail="Savol topilmadi")
+    return {"deleted": True, "question_id": question_id}
 
 
 @app.get("/tags/trending")

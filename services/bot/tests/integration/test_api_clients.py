@@ -1,35 +1,30 @@
 """
 Integration testlar — bot utils/api.py klientlari.
 
-Bu testlar real HTTP so'rovlarini mock qilib, klient logikasini tekshiradi:
-  - AIEngineClient: process_file, get_quizzes
-  - SubscriptionClient: check_limit (fail-open), telegram_id parametri
-  - GameClient: start_game, award_xp
-
-Real servislar bilan test uchun: INTEGRATION_REAL=1 env var qo'ying.
-"""
-"""
-Integration testlar — bot utils/api.py klientlari.
-conftest.py mock larini chetlab, utils.api ni bevosita yuklaymiz.
+Har bir klient uchun `client._http` ni to'g'ridan-to'g'ri mock qilamiz —
+shunday qilib real HTTP so'rovlari yuborilmaydi.
 """
 import sys
 import os
-import importlib
 
 _BOT_DIR = os.path.join(os.path.dirname(__file__), "../..")
 sys.path.insert(0, _BOT_DIR)
 
-# utils.api mock ni sys.modules dan olib tashlash — real modulni yuklaymiz
-for key in list(sys.modules.keys()):
-    if key in ("utils.api", "utils"):
-        del sys.modules[key]
-
 import pytest
 import httpx
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 
-# ── AIEngineClient ────────────────────────────────────────────────────────────
+def _make_resp(json_data: dict, status: int = 200) -> MagicMock:
+    resp = MagicMock()
+    resp.is_error = status >= 400
+    resp.status_code = status
+    resp.json.return_value = json_data
+    resp.text = str(json_data)
+    return resp
+
+
+# ── AIEngineClient ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_ai_engine_process_file_calls_correct_endpoint():
@@ -37,57 +32,40 @@ async def test_ai_engine_process_file_calls_correct_endpoint():
     from utils.api import AIEngineClient
 
     client = AIEngineClient(base_url="http://ai-engine:8002")
+    client._http = MagicMock()
+    client._http.post = AsyncMock(return_value=_make_resp({"task_id": "abc123", "status": "processing"}))
 
-    mock_response = MagicMock()
-    mock_response.is_error = False
-    mock_response.json.return_value = {"task_id": "abc123", "status": "processing"}
-
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.post = AsyncMock(return_value=mock_response)
-
-        result = await client.process_file(
-            file_url="https://example.com/file.docx",
-            file_name="test.docx",
-            file_size=1024,
-            user_id=12345,
-        )
+    result = await client.process_file(
+        file_url="https://example.com/file.docx",
+        file_name="test.docx",
+        file_size=1024,
+        user_id=12345,
+    )
 
     assert result["task_id"] == "abc123"
     assert result["status"] == "processing"
-    # To'g'ri endpoint chaqirildi
-    call_args = mock_http.return_value.post.call_args
-    assert "/process" in call_args[0][0]
+    url = client._http.post.call_args[0][0]
+    assert "/process" in url
 
 
 @pytest.mark.asyncio
 async def test_ai_engine_get_quizzes_with_pagination():
-    """get_quizzes page/page_size parametrlari to'g'ri yuborilishi."""
+    """get_quizzes limit/offset parametrlari to'g'ri yuborilishi."""
     from utils.api import AIEngineClient
 
     client = AIEngineClient(base_url="http://ai-engine:8002")
+    client._http = MagicMock()
+    client._http.get = AsyncMock(return_value=_make_resp(
+        {"quizzes": [{"id": "quiz1"}], "total": 1}
+    ))
 
-    mock_response = MagicMock()
-    mock_response.is_error = False
-    mock_response.json.return_value = {
-        "items": [{"id": "quiz1", "name": "Test Quiz"}],
-        "total": 1,
-        "page": 2,
-    }
+    result = await client.get_quizzes(page=2, page_size=5, public=True)
 
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.get = AsyncMock(return_value=mock_response)
-
-        result = await client.get_quizzes(page=2, page_size=5, public=True)
-
-    assert result["page"] == 2
-    params = mock_http.return_value.get.call_args[1]["params"]
-    assert params["page"] == 2
-    assert params["page_size"] == 5
-    assert params["public"] is True
+    assert "quizzes" in result
+    params = client._http.get.call_args[1]["params"]
+    assert params["limit"] == 5
+    assert params["offset"] == 5          # (page-1) * page_size = 1 * 5
+    assert params["visibility"] == "public"
 
 
 @pytest.mark.asyncio
@@ -96,24 +74,16 @@ async def test_ai_engine_service_error_raises():
     from utils.api import AIEngineClient, ServiceError
 
     client = AIEngineClient(base_url="http://ai-engine:8002")
+    client._http = MagicMock()
+    client._http.post = AsyncMock(return_value=_make_resp({"detail": "Not Found"}, status=404))
 
-    mock_response = MagicMock()
-    mock_response.is_error = True
-    mock_response.status_code = 404
-    mock_response.text = '{"detail": "Not Found"}'
-
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.post = AsyncMock(return_value=mock_response)
-
-        with pytest.raises(ServiceError) as exc_info:
-            await client.process_file(
-                file_url="http://x.com/f.docx",
-                file_name="f.docx",
-                file_size=100,
-                user_id=1,
-            )
+    with pytest.raises(ServiceError) as exc_info:
+        await client.process_file(
+            file_url="http://x.com/f.docx",
+            file_name="f.docx",
+            file_size=100,
+            user_id=1,
+        )
 
     assert exc_info.value.status == 404
     assert "ai-engine" in str(exc_info.value)
@@ -127,21 +97,17 @@ async def test_subscription_check_limit_allowed():
     from utils.api import SubscriptionClient
 
     client = SubscriptionClient(base_url="http://subscription:8003")
+    client._http = MagicMock()
+    client._http.get = AsyncMock(return_value=_make_resp(
+        {"allowed": True, "limit": 3, "used": 1, "plan": "free"}
+    ))
 
-    mock_response = MagicMock()
-    mock_response.is_error = False
-    mock_response.json.return_value = {"allowed": True, "limit": 3, "used": 1, "plan": "free"}
-
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.get = AsyncMock(return_value=mock_response)
-
-        result = await client.check_limit(user_id=12345, action="file_upload")
+    result = await client.check_limit(user_id=12345, action="file_upload")
 
     assert result is True
-    params = mock_http.return_value.get.call_args[1]["params"]
+    params = client._http.get.call_args[1]["params"]
     assert params["telegram_id"] == 12345
+    assert params["action"] == "file_upload"
 
 
 @pytest.mark.asyncio
@@ -150,17 +116,12 @@ async def test_subscription_check_limit_blocked():
     from utils.api import SubscriptionClient
 
     client = SubscriptionClient(base_url="http://subscription:8003")
+    client._http = MagicMock()
+    client._http.get = AsyncMock(return_value=_make_resp(
+        {"allowed": False, "limit": 3, "used": 3, "plan": "free"}
+    ))
 
-    mock_response = MagicMock()
-    mock_response.is_error = False
-    mock_response.json.return_value = {"allowed": False, "limit": 3, "used": 3, "plan": "free"}
-
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.get = AsyncMock(return_value=mock_response)
-
-        result = await client.check_limit(user_id=12345, action="file_upload")
+    result = await client.check_limit(user_id=12345, action="file_upload")
 
     assert result is False
 
@@ -171,37 +132,24 @@ async def test_subscription_fail_open_on_error():
     from utils.api import SubscriptionClient
 
     client = SubscriptionClient(base_url="http://subscription:8003")
+    client._http = MagicMock()
+    client._http.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.get = AsyncMock(
-            side_effect=httpx.ConnectError("Connection refused")
-        )
+    result = await client.check_limit(user_id=12345, action="file_upload")
 
-        result = await client.check_limit(user_id=12345, action="file_upload")
-
-    # Fail-open: xato bo'lsa ham True
     assert result is True
 
 
 @pytest.mark.asyncio
 async def test_subscription_fail_open_on_422():
-    """422 Unprocessable Entity → fail-open."""
+    """422 → fail-open."""
     from utils.api import SubscriptionClient
 
     client = SubscriptionClient(base_url="http://subscription:8003")
+    client._http = MagicMock()
+    client._http.get = AsyncMock(return_value=_make_resp({}, status=422))
 
-    mock_response = MagicMock()
-    mock_response.is_error = True
-    mock_response.status_code = 422
-
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.get = AsyncMock(return_value=mock_response)
-
-        result = await client.check_limit(user_id=12345, action="file_upload")
+    result = await client.check_limit(user_id=12345, action="file_upload")
 
     assert result is True
 
@@ -214,29 +162,20 @@ async def test_game_client_start_game():
     from utils.api import GameClient
 
     client = GameClient(base_url="http://game:8081")
+    client._http = MagicMock()
+    client._http.post = AsyncMock(return_value=_make_resp(
+        {"game_id": "game-uuid-123", "status": "active"}
+    ))
 
-    mock_response = MagicMock()
-    mock_response.is_error = False
-    mock_response.json.return_value = {
-        "game_id": "game-uuid-123",
-        "status": "active",
-        "questions": [],
-    }
-
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.post = AsyncMock(return_value=mock_response)
-
-        result = await client.start_game(
-            user_id=12345,
-            quiz_id="quiz-abc",
-            set_number=1,
-            time_per_question=30,
-        )
+    result = await client.start_game(
+        user_id=12345,
+        quiz_id="quiz-abc",
+        set_number=1,
+        time_per_question=30,
+    )
 
     assert result["game_id"] == "game-uuid-123"
-    body = mock_http.return_value.post.call_args[1]["json"]
+    body = client._http.post.call_args[1]["json"]
     assert body["user_id"] == 12345
     assert body["quiz_id"] == "quiz-abc"
     assert body["set_number"] == 1
@@ -249,22 +188,17 @@ async def test_game_client_award_xp():
     from utils.api import GameClient
 
     client = GameClient(base_url="http://game:8081")
+    client._http = MagicMock()
+    client._http.post = AsyncMock(return_value=_make_resp(
+        {"total_xp": 150, "awarded": 50}
+    ))
 
-    mock_response = MagicMock()
-    mock_response.is_error = False
-    mock_response.json.return_value = {"total_xp": 150, "awarded": 50}
-
-    with patch("httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http.return_value.post = AsyncMock(return_value=mock_response)
-
-        result = await client.award_xp(user_id=12345, xp=50, reason="referral")
+    result = await client.award_xp(user_id=12345, xp=50, reason="referral")
 
     assert result["awarded"] == 50
-    url = mock_http.return_value.post.call_args[0][0]
+    url = client._http.post.call_args[0][0]
     assert "12345" in url
     assert "/xp" in url
-    body = mock_http.return_value.post.call_args[1]["json"]
+    body = client._http.post.call_args[1]["json"]
     assert body["xp"] == 50
     assert body["reason"] == "referral"

@@ -27,14 +27,15 @@ CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);
 CREATE INDEX IF NOT EXISTS idx_games_user_status ON games(user_id, status);
 
 CREATE TABLE IF NOT EXISTS answers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID DEFAULT gen_random_uuid(),
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     question_id UUID NOT NULL REFERENCES questions(id),
     user_id UUID NOT NULL REFERENCES users(id),
     selected_indices INTEGER[],
     is_correct BOOLEAN,
     time_spent_ms INTEGER,
-    answered_at TIMESTAMP DEFAULT now()
+    answered_at TIMESTAMP DEFAULT now(),
+    PRIMARY KEY (id, answered_at)
 ) PARTITION BY RANGE (answered_at);
 
 CREATE TABLE IF NOT EXISTS answers_2026_05 PARTITION OF answers

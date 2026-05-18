@@ -44,9 +44,6 @@ async def menu_button_in_state(message: Message, state: FSMContext) -> None:
     elif text in {"🔍 Qidirish", "🔍 Поиск", "🔍 Search"}:
         await state.set_state(QuizStates.SEARCHING)
         await message.answer("🔍 Qidiring yoki teg tanlang:\n\nYoki matn yozing...")
-    elif text in {"📤 Quiz Yaratish", "📤 Создать квиз", "📤 Create Quiz"}:
-        from keyboards.inline import upload_menu_keyboard
-        await message.answer("Quiz yaratish usulini tanlang:", reply_markup=upload_menu_keyboard())
     elif text in {"🏆 Reyting", "🏆 Рейтинг", "🏆 Leaderboard"}:
         from keyboards.inline import leaderboard_tabs_keyboard
         await message.answer("🏆 Reyting:", reply_markup=leaderboard_tabs_keyboard())
@@ -56,6 +53,9 @@ async def menu_button_in_state(message: Message, state: FSMContext) -> None:
     elif text in {"👥 Taklif qilish", "👥 Пригласить", "👥 Invite"}:
         from handlers.profile import show_referral
         await show_referral(message)
+    elif text in {"📤 Quiz Yaratish", "📤 Создать квиз", "📤 Create Quiz"}:
+        from handlers.upload import quiz_create_menu
+        await quiz_create_menu(message, state)
 
 
 @router.message(Command("help"))

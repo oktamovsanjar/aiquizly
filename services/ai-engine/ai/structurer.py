@@ -2,16 +2,19 @@
 import asyncio
 import json
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from openai import AsyncOpenAI
 
 from .prompts import STRUCTURE_PROMPT
 from .validator import validate_questions
-from boundary.splitter import QuestionBlock
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _merge_stats(a: Dict[str, int], b: Dict[str, int]) -> Dict[str, int]:
+    return {k: a.get(k, 0) + b.get(k, 0) for k in set(a) | set(b)}
 
 
 class AIStructurer:
@@ -24,28 +27,46 @@ class AIStructurer:
         else:
             self.client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-    async def structure_blocks(self, blocks: List[QuestionBlock]) -> List[Dict[str, Any]]:
+    async def structure_blocks(self, blocks: List[Any]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
         """
-        Savollarni batch qilib AI ga yuboradi va strukturalangan ro'yxat qaytaradi.
-        Parallel batch processing: 10x tezroq.
+        Savollarni batch qilib AI ga yuboradi.
+        Semaphore orqali max ai_max_concurrent parallel so'rov.
+        Qaytaradi: (questions, stats)
         """
+        if not blocks:
+            return [], {}
+
         batch_size = settings.ai_batch_size
         batches = [blocks[i:i + batch_size] for i in range(0, len(blocks), batch_size)]
+        total = len(batches)
+        logger.info("Jami %d batch, max %d parallel", total, settings.ai_max_concurrent)
 
-        tasks = [self._process_batch(batch, batch_idx) for batch_idx, batch in enumerate(batches)]
+        sem = asyncio.Semaphore(settings.ai_max_concurrent)
+
+        async def _bounded(batch: List[Any], idx: int) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+            async with sem:
+                logger.debug("Batch %d/%d boshlandi", idx + 1, total)
+                result = await self._process_batch(batch, idx)
+                logger.debug("Batch %d/%d tugadi", idx + 1, total)
+                return result
+
+        tasks = [_bounded(batch, i) for i, batch in enumerate(batches)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        all_questions = []
+        all_questions: List[Dict[str, Any]] = []
+        combined_stats: Dict[str, int] = {}
         for result in results:
             if isinstance(result, Exception):
                 logger.error("Batch xatosi: %s", result)
                 continue
-            all_questions.extend(result)
+            questions, stats = result
+            all_questions.extend(questions)
+            combined_stats = _merge_stats(combined_stats, stats)
 
-        return all_questions
+        logger.info("Jami %d savol chiqarildi", len(all_questions))
+        return all_questions, combined_stats
 
-    async def _process_batch(self, blocks: List[QuestionBlock], batch_idx: int) -> List[Dict[str, Any]]:
-        """Bitta batchni AI ga yuboradi, retry bilan"""
+    async def _process_batch(self, blocks: List[Any], batch_idx: int) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
         questions_text = "\n\n".join(
             f"{i + 1}. {b.raw_text}" for i, b in enumerate(blocks)
         )
@@ -54,7 +75,6 @@ class AIStructurer:
         for attempt in range(settings.ai_max_retries):
             try:
                 model = settings.ai_model_primary if attempt == 0 else settings.ai_model_fallback
-                # DeepSeek va ba'zi modellar json_object formatini qo'llab-quvvatlaydi
                 supports_json_format = "gpt-4" in model or "deepseek" in model
                 response = await self.client.chat.completions.create(
                     model=model,
@@ -64,9 +84,9 @@ class AIStructurer:
                 )
                 raw = response.choices[0].message.content
                 questions = self._parse_response(raw)
-                validated = validate_questions(questions)
+                validated, stats = validate_questions(questions)
                 if validated:
-                    return validated
+                    return validated, stats
 
             except Exception as e:
                 logger.warning("Batch %d, urinish %d xatosi: %s", batch_idx, attempt + 1, e)
@@ -74,15 +94,12 @@ class AIStructurer:
                     await asyncio.sleep(2 ** attempt)
 
         logger.error("Batch %d barcha urinishlardan keyin ham muvaffaqiyatsiz", batch_idx)
-        return []
+        return [], {}
 
     def _parse_response(self, raw: str) -> List[Dict[str, Any]]:
-        """AI javobidan JSON parserlaydi"""
         raw = raw.strip()
-        # JSON array yoki object ichidagi array ni topish
         if raw.startswith("{"):
             data = json.loads(raw)
-            # {"questions": [...]} yoki birinchi list qiymatni topish
             for val in data.values():
                 if isinstance(val, list):
                     return val

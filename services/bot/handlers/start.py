@@ -10,6 +10,7 @@ from db import AsyncSessionLocal
 from db.models import Referral, User
 from keyboards.main_menu import main_menu_keyboard
 from keyboards.language import language_keyboard
+from utils.admin_notify import notify_new_user
 from utils.i18n import t
 
 router = Router()
@@ -19,12 +20,13 @@ REFERRAL_XP_REFERRED = 20      # yangi foydalanuvchiga
 REFERRAL_PREMIUM_DAYS = 3      # taklif qilganga premium kunlar
 
 
-async def _upsert_user(message: Message) -> User:
-    """Foydalanuvchini DB ga qo'shish yoki yangilash. User qaytaradi."""
+async def _upsert_user(message: Message) -> tuple[User, bool]:
+    """Foydalanuvchini DB ga qo'shish yoki yangilash. (User, is_new) qaytaradi."""
     tg = message.from_user
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(User).where(User.telegram_id == tg.id))
         user = result.scalar_one_or_none()
+        is_new = user is None
         if user is None:
             user = User(
                 telegram_id=tg.id,
@@ -47,7 +49,7 @@ async def _upsert_user(message: Message) -> User:
                 )
             )
             await session.commit()
-        return user
+        return user, is_new
 
 
 async def _process_referral(referred_user: User, referrer_telegram_id: int) -> str | None:
@@ -127,7 +129,13 @@ async def cmd_start_referral(message: Message) -> None:
         await cmd_start(message)
         return
 
-    user = await _upsert_user(message)
+    user, is_new = await _upsert_user(message)
+    if is_new:
+        import asyncio
+        asyncio.create_task(notify_new_user(
+            message.bot, user.telegram_id, user.username, user.first_name,
+            params=[f"ref_{referrer_tg_id}"],
+        ))
     referrer_name = await _process_referral(user, referrer_tg_id)
 
     bonus_text = ""
@@ -146,7 +154,12 @@ async def cmd_start_referral(message: Message) -> None:
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
     """Birinchi kirish yoki qayta kirish."""
-    user = await _upsert_user(message)
+    user, is_new = await _upsert_user(message)
+    if is_new:
+        import asyncio
+        asyncio.create_task(notify_new_user(
+            message.bot, user.telegram_id, user.username, user.first_name,
+        ))
 
     # Foydalanuvchi allaqachon ro'yxatdan o'tgan bo'lsa — menyu ko'rsat
     if _is_returning_user(user):

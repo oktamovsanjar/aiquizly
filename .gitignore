@@ -2,12 +2,18 @@
 .env
 *.env
 
-# Go
+# Go — compiled binaries
 services/gateway/gateway
+services/gateway/main
 services/game/game
+services/game/main
 services/notifier/notifier
+services/notifier/main
 **/vendor/
 **/bin/
+
+# Zip / archives
+*.zip
 
 # Python
 __pycache__/
