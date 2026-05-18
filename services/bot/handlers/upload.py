@@ -36,7 +36,7 @@ ALLOWED_MIME_TYPES = {
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 POLL_INTERVAL = 4  # sekund
-POLL_TIMEOUT = 300  # 5 daqiqa
+POLL_TIMEOUT = 900  # 15 daqiqa
 
 
 def _create_keyboard() -> InlineKeyboardMarkup:

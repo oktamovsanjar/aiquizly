@@ -127,7 +127,8 @@ class AIStructurer:
                 )
                 raw = response.choices[0].message.content
                 finish_reason = response.choices[0].finish_reason
-                if finish_reason == "length":
+                truncated = finish_reason == "length"
+                if truncated:
                     logger.warning(
                         "Batch %d truncated (finish_reason=length), regex fallback",
                         batch_idx,
@@ -137,6 +138,10 @@ class AIStructurer:
                 validated, stats = validate_questions(questions)
                 if validated:
                     return validated, stats
+                # Truncated bo'lsa va savol topilmasa — qayta urinish befoyda
+                if truncated:
+                    logger.warning("Batch %d truncated va savol topilmadi, retry o'tkazib yuborildi", batch_idx)
+                    return [], {}
 
             except Exception as e:
                 logger.warning(
