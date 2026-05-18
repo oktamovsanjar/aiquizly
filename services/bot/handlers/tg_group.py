@@ -40,6 +40,9 @@ from keyboards.inline import (
 
 logger = logging.getLogger(__name__)
 router = Router()
+# Faqat guruh/superguruhda ishlaydi
+router.message.filter(F.chat.type.in_({"group", "supergroup"}))
+router.callback_query.filter(F.message.chat.type.in_({"group", "supergroup"}))
 
 # ── Voting state key helpers ──────────────────────────────────────────────────
 
