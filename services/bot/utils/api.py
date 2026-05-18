@@ -144,8 +144,15 @@ class GameClient:
             f"/games/{game_id}/finish",
             json={"status": status},
         )
+        # 409 = allaqachon tugagan — XP yo'qolmasin, bo'sh dict qaytaramiz
+        if resp.status_code == 409:
+            logger.debug("finish_game 409 — game %s already finished", game_id)
+            return {}
         _raise_for_service("game", resp)
-        return resp.json()
+        result = resp.json()
+        # XP berilgani uchun stats/rank/lb cache ni tozalaymiz
+        _cache_invalidate("lb:")
+        return result
 
     async def get_user_stats(self, user_id: int) -> dict[str, Any]:
         resp = await self._http.get(f"/users/{user_id}/stats")

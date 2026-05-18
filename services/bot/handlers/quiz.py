@@ -866,6 +866,12 @@ async def _show_results(
     chat_id: int, user_id: int, state: FSMContext, bot, message=None
 ) -> None:
     data = await state.get_data()
+
+    # Guard: ikki marta chaqirilishni oldini olish
+    if data.get("_finishing"):
+        return
+    await state.update_data(_finishing=True)
+
     correct = data.get("correct", 0)
     wrong = data.get("wrong", 0)
     skipped = data.get("skipped", 0)
@@ -892,9 +898,13 @@ async def _show_results(
     new_achievements = []
     if game_id:
         try:
+            from utils.api import _cache_invalidate
             result = await game_client().finish_game(game_id, status="completed")
             xp_earned = result.get("xp_earned", 0)
             new_achievements = result.get("new_achievements", [])
+            # Stats/rank cache ni tozalaymiz — profil yangi XP ni ko'rsin
+            _cache_invalidate(f"stats:{user_id}")
+            _cache_invalidate(f"rank:{user_id}")
         except Exception:
             pass
 
