@@ -12,13 +12,43 @@ Clients:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import time
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────── Simple TTL cache ────────────────────────────
+# Bot o'zi Redis ni FSM uchun ishlatadi, lekin API javoblari uchun
+# oddiy in-process cache yetarli (har process uchun, restart da tozalanadi)
+
+_cache: dict[str, tuple[float, Any]] = {}
+_cache_lock = asyncio.Lock()
+
+
+async def _cached(key: str, ttl: float, coro) -> Any:
+    """TTL cache wrapper. ttl — sekund."""
+    now = time.monotonic()
+    async with _cache_lock:
+        if key in _cache:
+            exp, val = _cache[key]
+            if now < exp:
+                return val
+    result = await coro
+    async with _cache_lock:
+        _cache[key] = (now + ttl, result)
+    return result
+
+
+def _cache_invalidate(prefix: str) -> None:
+    """Berilgan prefix bilan boshlangan barcha kalit larni o'chiradi."""
+    for k in list(_cache):
+        if k.startswith(prefix):
+            del _cache[k]
 
 GAME_SERVICE_URL: str = os.environ.get("GAME_SERVICE_URL", "http://game:8081")
 AI_ENGINE_URL: str = os.environ.get("AI_ENGINE_URL", "http://ai-engine:8002")
@@ -241,21 +271,25 @@ class AIEngineClient:
         return resp.json()
 
     async def get_quiz(self, quiz_id: str) -> dict[str, Any]:
-        resp = await self._http.get(f"/quizzes/{quiz_id}")
-        _raise_for_service("ai-engine", resp)
-        return resp.json()
+        async def _fetch():
+            resp = await self._http.get(f"/quizzes/{quiz_id}")
+            _raise_for_service("ai-engine", resp)
+            return resp.json()
+        return await _cached(f"quiz:{quiz_id}", ttl=30, coro=_fetch())
 
     async def get_questions(
         self,
         quiz_id: str,
         set_number: int,
     ) -> list[dict[str, Any]]:
-        resp = await self._http.get(
-            f"/quizzes/{quiz_id}/sets/{set_number}/questions"
-        )
-        _raise_for_service("ai-engine", resp)
-        data = resp.json()
-        return data if isinstance(data, list) else data.get("questions", [])
+        async def _fetch():
+            resp = await self._http.get(
+                f"/quizzes/{quiz_id}/sets/{set_number}/questions"
+            )
+            _raise_for_service("ai-engine", resp)
+            data = resp.json()
+            return data if isinstance(data, list) else data.get("questions", [])
+        return await _cached(f"qset:{quiz_id}:{set_number}", ttl=60, coro=_fetch())
 
     async def save_quiz(
         self,
@@ -333,6 +367,7 @@ class AIEngineClient:
             body["visibility"] = "public" if is_public else "private"
         resp = await self._http.patch(f"/quizzes/{quiz_id}", json=body)
         _raise_for_service("ai-engine", resp)
+        _cache_invalidate(f"quiz:{quiz_id}")
         return resp.json()
 
     async def update_quiz_visibility(self, quiz_id: str, is_public: bool) -> dict[str, Any]:
@@ -341,6 +376,7 @@ class AIEngineClient:
     async def delete_quiz(self, quiz_id: str) -> dict[str, Any]:
         resp = await self._http.delete(f"/quizzes/{quiz_id}")
         _raise_for_service("ai-engine", resp)
+        _cache_invalidate(f"quiz:{quiz_id}")
         return resp.json()
 
 
