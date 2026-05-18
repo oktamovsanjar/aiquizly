@@ -266,9 +266,21 @@ class AIEngineClient:
             params["q"] = search
         if public is not None:
             params["visibility"] = "public" if public else "private"
-        resp = await self._http.get("/quizzes", params=params)
-        _raise_for_service("ai-engine", resp)
-        return resp.json()
+
+        # Search yoki tag bo'lsa — cache yo'q (har xil natija)
+        if search or tag:
+            resp = await self._http.get("/quizzes", params=params)
+            _raise_for_service("ai-engine", resp)
+            return resp.json()
+
+        cache_key = f"quizzes:u{user_id}:p{public}:pg{page}"
+        ttl = 15.0 if user_id else 30.0   # o'z quizlari tezroq eskiradi
+
+        async def _fetch():
+            resp = await self._http.get("/quizzes", params=params)
+            _raise_for_service("ai-engine", resp)
+            return resp.json()
+        return await _cached(cache_key, ttl=ttl, coro=_fetch())
 
     async def get_quiz(self, quiz_id: str) -> dict[str, Any]:
         async def _fetch():
@@ -312,6 +324,7 @@ class AIEngineClient:
             },
         )
         _raise_for_service("ai-engine", resp)
+        _cache_invalidate("quizzes:")
         return resp.json()
 
     async def get_trending_tags(self, limit: int = 9) -> list[str]:
@@ -377,6 +390,7 @@ class AIEngineClient:
         resp = await self._http.delete(f"/quizzes/{quiz_id}")
         _raise_for_service("ai-engine", resp)
         _cache_invalidate(f"quiz:{quiz_id}")
+        _cache_invalidate("quizzes:")
         return resp.json()
 
 

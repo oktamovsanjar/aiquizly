@@ -422,8 +422,7 @@ async def change_time(cb: CallbackQuery, state: FSMContext) -> None:
 async def quiz_list_page(cb: CallbackQuery, state: FSMContext) -> None:
     """Quiz ro'yxatida sahifalar."""
     page = int(cb.data.split(":")[2])
-    data = await state.get_data()
-    browsing_state = await state.get_state()
+    (data, browsing_state) = await asyncio.gather(state.get_data(), state.get_state())
     user_id = cb.from_user.id
     try:
         if browsing_state == QuizStates.BROWSING_MY_QUIZZES.state:
@@ -452,10 +451,12 @@ async def select_set(cb: CallbackQuery, state: FSMContext) -> None:
     quiz_id = parts[2]
     set_number = int(parts[3])
 
-    await state.update_data(quiz_id=quiz_id, set_number=set_number, time_sec=30)
-    await state.set_state(QuizStates.QUIZ_SETUP)
     data = await state.get_data()
     lang = data.get("language_code", "uz")
+    await asyncio.gather(
+        state.update_data(quiz_id=quiz_id, set_number=set_number, time_sec=30),
+        state.set_state(QuizStates.QUIZ_SETUP),
+    )
 
     await cb.message.edit_text(
         t("quiz_select_time", lang),
@@ -577,10 +578,9 @@ async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
 
 async def _send_next_question(chat_id: int, user_id: int, state: FSMContext, bot) -> None:
     """Keyingi savolni yuboradi va vaqt tugaganda auto-advance timerni o'rnatadi."""
-    data = await state.get_data()
+    data, current_state = await asyncio.gather(state.get_data(), state.get_state())
 
     # Agar quiz to'xtatilgan / pauzada bo'lsa — savol yuborma
-    current_state = await state.get_state()
     if current_state not in (QuizStates.QUIZ_PLAYING.state, None):
         return
 
@@ -667,7 +667,7 @@ async def _auto_advance(
     await asyncio.sleep(time_sec + 1.5)
     _poll_timers.pop(task_key, None)
 
-    data = await state.get_data()
+    data, current_state = await asyncio.gather(state.get_data(), state.get_state())
     if not data.get("questions"):
         return
 
@@ -675,7 +675,6 @@ async def _auto_advance(
     if data.get("current_poll_id") != poll_id:
         return
 
-    current_state = await state.get_state()
     if current_state == QuizStates.PAUSED.state:
         return
 
