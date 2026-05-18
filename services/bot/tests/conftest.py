@@ -175,6 +175,9 @@ _inline_fns = [
     "profile_keyboard",
     "referral_keyboard",
     "tg_group_settings_keyboard",
+    "tg_group_linked_quizzes_keyboard",
+    "tg_group_quiz_select_keyboard",
+    "tg_group_quiz_start_keyboard",
     "voting_keyboard",
     "group_result_keyboard",
     # review flow
