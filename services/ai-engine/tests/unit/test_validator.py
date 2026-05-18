@@ -1,17 +1,20 @@
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from ai.validator import validate_questions
 
 
 def test_valid_question():
-    questions = [{
-        "question": "O'zbekiston qachon mustaqil bo'lgan?",
-        "options": ["1990", "1991", "1992", "1993"],
-        "correct_index": 1,
-        "explanation": "1991-yil",
-    }]
+    questions = [
+        {
+            "question": "O'zbekiston qachon mustaqil bo'lgan?",
+            "options": ["1990", "1991", "1992", "1993"],
+            "correct_index": 1,
+            "explanation": "1991-yil",
+        }
+    ]
     result, stats = validate_questions(questions)
     assert len(result) == 1
     assert result[0]["correct_index"] == 1
@@ -57,7 +60,9 @@ def test_few_options_warning():
 
 
 def test_many_options_warning():
-    questions = [{"question": "Savol?", "options": ["A", "B", "C", "D", "E"], "correct_index": 0}]
+    questions = [
+        {"question": "Savol?", "options": ["A", "B", "C", "D", "E"], "correct_index": 0}
+    ]
     result, stats = validate_questions(questions)
     assert len(result) == 1
     assert stats["many_options"] == 1
@@ -67,7 +72,12 @@ def test_many_options_warning():
 def test_empty_input():
     result, stats = validate_questions([])
     assert result == []
-    assert stats == {"skipped_no_options": 0, "few_options": 0, "many_options": 0, "duplicates": 0}
+    assert stats == {
+        "skipped_no_options": 0,
+        "few_options": 0,
+        "many_options": 0,
+        "duplicates": 0,
+    }
 
     result, stats = validate_questions(None)
     assert result == []

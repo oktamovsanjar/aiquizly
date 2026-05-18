@@ -13,6 +13,7 @@ Callback data prefixes:
   tg:   telegram group
   up:   upload / review
 """
+
 from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -50,9 +51,13 @@ def quiz_list_keyboard(
 
     nav: list[InlineKeyboardButton] = []
     if page > 1:
-        nav.append(InlineKeyboardButton(text="← Oldingi", callback_data=f"qb:page:{page - 1}"))
+        nav.append(
+            InlineKeyboardButton(text="← Oldingi", callback_data=f"qb:page:{page - 1}")
+        )
     if has_next:
-        nav.append(InlineKeyboardButton(text="Keyingi →", callback_data=f"qb:page:{page + 1}"))
+        nav.append(
+            InlineKeyboardButton(text="Keyingi →", callback_data=f"qb:page:{page + 1}")
+        )
     if nav:
         rows.append(nav)
 
@@ -72,40 +77,66 @@ def my_quiz_list_keyboard(
         title = q.get("title", q.get("name", "Quiz"))
         count = q.get("total_questions", "?")
         vis = "🌐" if q.get("visibility") == "public" else "🔒"
-        rows.append([
-            InlineKeyboardButton(
-                text=f"{vis} {title[:28]} ({count})",
-                callback_data=f"qb:quiz:{qid}",
-            ),
-            InlineKeyboardButton(text="⚙️", callback_data=f"qb:manage:{qid}"),
-        ])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{vis} {title[:28]} ({count})",
+                    callback_data=f"qb:quiz:{qid}",
+                ),
+                InlineKeyboardButton(text="⚙️", callback_data=f"qb:manage:{qid}"),
+            ]
+        )
 
     nav: list[InlineKeyboardButton] = []
     if page > 1:
-        nav.append(InlineKeyboardButton(text="← Oldingi", callback_data=f"qb:mypage:{page - 1}"))
+        nav.append(
+            InlineKeyboardButton(
+                text="← Oldingi", callback_data=f"qb:mypage:{page - 1}"
+            )
+        )
     if has_next:
-        nav.append(InlineKeyboardButton(text="Keyingi →", callback_data=f"qb:mypage:{page + 1}"))
+        nav.append(
+            InlineKeyboardButton(
+                text="Keyingi →", callback_data=f"qb:mypage:{page + 1}"
+            )
+        )
     if nav:
         rows.append(nav)
 
-    rows.append([
-        InlineKeyboardButton(text="📤 Yangi quiz", callback_data="up:menu"),
-        InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu"),
-    ])
+    rows.append(
+        [
+            InlineKeyboardButton(text="📤 Yangi quiz", callback_data="up:menu"),
+            InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu"),
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def quiz_manage_keyboard(quiz_id: str, is_public: bool, bot_username: str = "aiquizaibot") -> InlineKeyboardMarkup:
+def quiz_manage_keyboard(
+    quiz_id: str, is_public: bool, bot_username: str = "aiquizaibot"
+) -> InlineKeyboardMarkup:
     """Quiz boshqaruv menyusi: o'ynash, tahrirlash, ko'rinish, o'chirish."""
     vis_text = "🔒 Yopiq qilish" if is_public else "🌐 Ochiq qilish"
     share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
     return _kb(
         [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:quiz:{quiz_id}")],
         [InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=share_link)],
-        [InlineKeyboardButton(text="📝 Savollarni tahrirlash", callback_data=f"rev:start:{quiz_id}")],
-        [InlineKeyboardButton(text="✏️ Nomini o'zgartirish", callback_data=f"qb:rename:{quiz_id}")],
+        [
+            InlineKeyboardButton(
+                text="📝 Savollarni tahrirlash", callback_data=f"rev:start:{quiz_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="✏️ Nomini o'zgartirish", callback_data=f"qb:rename:{quiz_id}"
+            )
+        ],
         [InlineKeyboardButton(text=vis_text, callback_data=f"qb:vis:{quiz_id}")],
-        [InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"qb:del_quiz:{quiz_id}")],
+        [
+            InlineKeyboardButton(
+                text="🗑 O'chirish", callback_data=f"qb:del_quiz:{quiz_id}"
+            )
+        ],
         [InlineKeyboardButton(text="◀ Orqaga", callback_data="qb:my")],
     )
 
@@ -113,7 +144,9 @@ def quiz_manage_keyboard(quiz_id: str, is_public: bool, bot_username: str = "aiq
 def quiz_delete_confirm_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
     return _kb(
         [
-            InlineKeyboardButton(text="🗑 Ha, o'chir", callback_data=f"qb:cdel_quiz:{quiz_id}"),
+            InlineKeyboardButton(
+                text="🗑 Ha, o'chir", callback_data=f"qb:cdel_quiz:{quiz_id}"
+            ),
             InlineKeyboardButton(text="❌ Bekor", callback_data=f"qb:manage:{quiz_id}"),
         ]
     )
@@ -141,10 +174,18 @@ def set_select_keyboard(sets: list[dict], quiz_id: str) -> InlineKeyboardMarkup:
 def time_select_keyboard(quiz_id: str, set_number: int) -> InlineKeyboardMarkup:
     return _kb(
         [
-            InlineKeyboardButton(text="15s", callback_data=f"qp:time:{quiz_id}:{set_number}:15"),
-            InlineKeyboardButton(text="30s", callback_data=f"qp:time:{quiz_id}:{set_number}:30"),
-            InlineKeyboardButton(text="45s", callback_data=f"qp:time:{quiz_id}:{set_number}:45"),
-            InlineKeyboardButton(text="60s", callback_data=f"qp:time:{quiz_id}:{set_number}:60"),
+            InlineKeyboardButton(
+                text="15s", callback_data=f"qp:time:{quiz_id}:{set_number}:15"
+            ),
+            InlineKeyboardButton(
+                text="30s", callback_data=f"qp:time:{quiz_id}:{set_number}:30"
+            ),
+            InlineKeyboardButton(
+                text="45s", callback_data=f"qp:time:{quiz_id}:{set_number}:45"
+            ),
+            InlineKeyboardButton(
+                text="60s", callback_data=f"qp:time:{quiz_id}:{set_number}:60"
+            ),
         ],
         [InlineKeyboardButton(text="◀ Orqaga", callback_data=f"qp:back_set:{quiz_id}")],
     )
@@ -160,10 +201,30 @@ def quiz_start_keyboard(
     sq = "✅" if shuffle_q else "❌"
     so = "✅" if shuffle_o else "❌"
     return _kb(
-        [InlineKeyboardButton(text="▶️ Boshlash", callback_data=f"qp:start:{quiz_id}:{set_number}:{time_sec}")],
-        [InlineKeyboardButton(text=f"🔀 Savollar: {sq}", callback_data=f"qp:toggle_sq:{quiz_id}:{set_number}:{time_sec}")],
-        [InlineKeyboardButton(text=f"🔀 Variantlar: {so}", callback_data=f"qp:toggle_so:{quiz_id}:{set_number}:{time_sec}")],
-        [InlineKeyboardButton(text="⏱ Vaqtni o'zgartirish", callback_data=f"qp:change_time:{quiz_id}:{set_number}")],
+        [
+            InlineKeyboardButton(
+                text="▶️ Boshlash",
+                callback_data=f"qp:start:{quiz_id}:{set_number}:{time_sec}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🔀 Savollar: {sq}",
+                callback_data=f"qp:toggle_sq:{quiz_id}:{set_number}:{time_sec}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🔀 Variantlar: {so}",
+                callback_data=f"qp:toggle_so:{quiz_id}:{set_number}:{time_sec}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="⏱ Vaqtni o'zgartirish",
+                callback_data=f"qp:change_time:{quiz_id}:{set_number}",
+            )
+        ],
         [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
     )
 
@@ -174,7 +235,11 @@ def quiz_start_keyboard(
 def stop_quiz_keyboard(current: int, total: int) -> InlineKeyboardMarkup:
     return _kb(
         [InlineKeyboardButton(text="▶️ Davom etish", callback_data="qp:continue")],
-        [InlineKeyboardButton(text="⏹ To'xtatish va natija ko'rish", callback_data="qp:stop_result")],
+        [
+            InlineKeyboardButton(
+                text="⏹ To'xtatish va natija ko'rish", callback_data="qp:stop_result"
+            )
+        ],
     )
 
 
@@ -185,7 +250,9 @@ def pause_quiz_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def saved_quiz_keyboard(quiz_id: str, set_number: int, time_sec: int) -> InlineKeyboardMarkup:
+def saved_quiz_keyboard(
+    quiz_id: str, set_number: int, time_sec: int
+) -> InlineKeyboardMarkup:
     return _kb(
         [
             InlineKeyboardButton(
@@ -254,7 +321,9 @@ def quiz_result_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def retry_result_keyboard(quiz_id: str, set_number: int, still_wrong: int) -> InlineKeyboardMarkup:
+def retry_result_keyboard(
+    quiz_id: str, set_number: int, still_wrong: int
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if still_wrong > 0:
         rows.append(
@@ -290,8 +359,17 @@ def image_upload_keyboard() -> InlineKeyboardMarkup:
 def review_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return _kb(
         [InlineKeyboardButton(text="✅ Saqlash", callback_data=f"up:save:{task_id}")],
-        [InlineKeyboardButton(text="👁 Ko'rib chiqish", callback_data=f"up:preview:{task_id}")],
-        [InlineKeyboardButton(text="⏭ Xatolarni o'tkazib yuborish", callback_data=f"up:skip_errors:{task_id}")],
+        [
+            InlineKeyboardButton(
+                text="👁 Ko'rib chiqish", callback_data=f"up:preview:{task_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="⏭ Xatolarni o'tkazib yuborish",
+                callback_data=f"up:skip_errors:{task_id}",
+            )
+        ],
         [InlineKeyboardButton(text="❌ Bekor", callback_data="up:cancel")],
     )
 
@@ -299,8 +377,12 @@ def review_keyboard(task_id: str) -> InlineKeyboardMarkup:
 def visibility_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return _kb(
         [
-            InlineKeyboardButton(text="🔒 Faqat men", callback_data=f"up:vis:{task_id}:private"),
-            InlineKeyboardButton(text="🌐 Ommaviy", callback_data=f"up:vis:{task_id}:public"),
+            InlineKeyboardButton(
+                text="🔒 Faqat men", callback_data=f"up:vis:{task_id}:private"
+            ),
+            InlineKeyboardButton(
+                text="🌐 Ommaviy", callback_data=f"up:vis:{task_id}:public"
+            ),
         ],
     )
 
@@ -310,10 +392,26 @@ def visibility_keyboard(task_id: str) -> InlineKeyboardMarkup:
 
 def quiz_group_keyboard(group_id: int) -> InlineKeyboardMarkup:
     return _kb(
-        [InlineKeyboardButton(text="📂 Quiz biriktirish", callback_data=f"qg:attach:{group_id}")],
-        [InlineKeyboardButton(text="📢 Xabar yuborish", callback_data=f"qg:broadcast:{group_id}")],
-        [InlineKeyboardButton(text="📊 Statistika", callback_data=f"qg:stats:{group_id}")],
-        [InlineKeyboardButton(text="📤 Link ulashish", callback_data=f"qg:share:{group_id}")],
+        [
+            InlineKeyboardButton(
+                text="📂 Quiz biriktirish", callback_data=f"qg:attach:{group_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📢 Xabar yuborish", callback_data=f"qg:broadcast:{group_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📊 Statistika", callback_data=f"qg:stats:{group_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📤 Link ulashish", callback_data=f"qg:share:{group_id}"
+            )
+        ],
         [InlineKeyboardButton(text="◀ Orqaga", callback_data="qg:list")],
     )
 
@@ -332,7 +430,9 @@ def quiz_group_list_keyboard(groups: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def subscribe_group_keyboard(group_id: int, is_subscribed: bool) -> InlineKeyboardMarkup:
+def subscribe_group_keyboard(
+    group_id: int, is_subscribed: bool
+) -> InlineKeyboardMarkup:
     if is_subscribed:
         sub_btn = InlineKeyboardButton(
             text="🔕 Obunadan chiqish", callback_data=f"qg:unsub:{group_id}"
@@ -374,17 +474,38 @@ def leaderboard_tabs_keyboard(active_tab: str = "all") -> InlineKeyboardMarkup:
 
 def payment_keyboard(period: str = "monthly") -> InlineKeyboardMarkup:
     return _kb(
-        [InlineKeyboardButton(text="⭐ Telegram Stars bilan to'lash", callback_data=f"pay:stars:{period}")],
-        [InlineKeyboardButton(text="👥 Do'st taklif qilib yutish", callback_data="ref:invite")],
+        [
+            InlineKeyboardButton(
+                text="⭐ Telegram Stars bilan to'lash",
+                callback_data=f"pay:stars:{period}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="👥 Do'st taklif qilib yutish", callback_data="ref:invite"
+            )
+        ],
         [InlineKeyboardButton(text="❌ Yopish", callback_data="pay:close")],
     )
 
 
 def premium_plans_keyboard() -> InlineKeyboardMarkup:
     return _kb(
-        [InlineKeyboardButton(text="📅 Oylik — 29 000 so'm", callback_data="pay:monthly")],
-        [InlineKeyboardButton(text="📆 Yillik — 249 000 so'm (29% tejash)", callback_data="pay:yearly")],
-        [InlineKeyboardButton(text="👥 Taklif qilib yutish", callback_data="ref:invite")],
+        [
+            InlineKeyboardButton(
+                text="📅 Oylik — 29 000 so'm", callback_data="pay:monthly"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📆 Yillik — 249 000 so'm (29% tejash)", callback_data="pay:yearly"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="👥 Taklif qilib yutish", callback_data="ref:invite"
+            )
+        ],
         [InlineKeyboardButton(text="◀ Orqaga", callback_data="prof:view")],
     )
 
@@ -423,11 +544,19 @@ def referral_keyboard(bot_username: str, user_id: int) -> InlineKeyboardMarkup:
 def tg_group_settings_keyboard(who: str, linked_count: int = 0) -> InlineKeyboardMarkup:
     admin_label = "●" if who == "admin" else " "
     all_label = "●" if who == "all" else " "
-    quiz_label = f"🔗 Quizlar: {linked_count} ta biriktirilgan" if linked_count else "🔗 Quiz biriktirish"
+    quiz_label = (
+        f"🔗 Quizlar: {linked_count} ta biriktirilgan"
+        if linked_count
+        else "🔗 Quiz biriktirish"
+    )
     return _kb(
         [
-            InlineKeyboardButton(text=f"({admin_label}) Faqat admin", callback_data="tg:who:admin"),
-            InlineKeyboardButton(text=f"({all_label}) Hammasi", callback_data="tg:who:all"),
+            InlineKeyboardButton(
+                text=f"({admin_label}) Faqat admin", callback_data="tg:who:admin"
+            ),
+            InlineKeyboardButton(
+                text=f"({all_label}) Hammasi", callback_data="tg:who:all"
+            ),
         ],
         [InlineKeyboardButton(text=quiz_label, callback_data="tg:manage_quizzes")],
         [InlineKeyboardButton(text="✅ Yopish", callback_data="tg:save_settings")],
@@ -442,7 +571,12 @@ def voting_keyboard(msg_id: int, voter_count: int) -> InlineKeyboardMarkup:
                 callback_data=f"tg:vote:{msg_id}",
             )
         ],
-        [InlineKeyboardButton(text="🚀 Hozir boshlash (admin)", callback_data=f"tg:force_start:{msg_id}")],
+        [
+            InlineKeyboardButton(
+                text="🚀 Hozir boshlash (admin)",
+                callback_data=f"tg:force_start:{msg_id}",
+            )
+        ],
         [InlineKeyboardButton(text="❌ Bekor (admin)", callback_data="tg:cancel_vote")],
     )
 
@@ -460,11 +594,17 @@ def tg_group_linked_quizzes_keyboard(linked: list[dict]) -> InlineKeyboardMarkup
     for q in linked:
         qid = q["id"]
         title = q.get("title", q.get("name", "Quiz"))[:28]
-        rows.append([
-            InlineKeyboardButton(text=f"📋 {title}", callback_data=f"tg:lq_start:{qid}"),
-            InlineKeyboardButton(text="🗑", callback_data=f"tg:lq_remove:{qid}"),
-        ])
-    rows.append([InlineKeyboardButton(text="➕ Quiz qo'shish", callback_data="tg:lq_add")])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📋 {title}", callback_data=f"tg:lq_start:{qid}"
+                ),
+                InlineKeyboardButton(text="🗑", callback_data=f"tg:lq_remove:{qid}"),
+            ]
+        )
+    rows.append(
+        [InlineKeyboardButton(text="➕ Quiz qo'shish", callback_data="tg:lq_add")]
+    )
     rows.append([InlineKeyboardButton(text="◀ Orqaga", callback_data="tg:lq_back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -476,11 +616,17 @@ def tg_group_quiz_start_keyboard(quizzes: list[dict]) -> InlineKeyboardMarkup:
         qid = q["id"]
         title = q.get("title", q.get("name", "Quiz"))
         count = q.get("total_questions", "?")
-        rows.append([InlineKeyboardButton(
-            text=f"▶️ {title[:30]} ({count} savol)",
-            callback_data=f"tg:gstart:{qid}",
-        )])
-    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data="tg:cancel_select")])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"▶️ {title[:30]} ({count} savol)",
+                    callback_data=f"tg:gstart:{qid}",
+                )
+            ]
+        )
+    rows.append(
+        [InlineKeyboardButton(text="❌ Bekor", callback_data="tg:cancel_select")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -491,11 +637,17 @@ def tg_group_quiz_select_keyboard(quizzes: list[dict]) -> InlineKeyboardMarkup:
         qid = q["id"]
         title = q.get("title", q.get("name", "Quiz"))
         count = q.get("total_questions", "?")
-        rows.append([InlineKeyboardButton(
-            text=f"📋 {title[:30]} ({count} savol)",
-            callback_data=f"tg:gselect:{qid}",
-        )])
-    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data="tg:cancel_select")])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📋 {title[:30]} ({count} savol)",
+                    callback_data=f"tg:gselect:{qid}",
+                )
+            ]
+        )
+    rows.append(
+        [InlineKeyboardButton(text="❌ Bekor", callback_data="tg:cancel_select")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -510,7 +662,9 @@ def review_nav_keyboard(q_idx: int, total: int) -> InlineKeyboardMarkup:
     nav = []
     if q_idx > 0:
         nav.append(InlineKeyboardButton(text="◀", callback_data=f"rev:nav:{q_idx - 1}"))
-    nav.append(InlineKeyboardButton(text=f"{q_idx + 1}/{total}", callback_data="rev:noop"))
+    nav.append(
+        InlineKeyboardButton(text=f"{q_idx + 1}/{total}", callback_data="rev:noop")
+    )
     if q_idx < total - 1:
         nav.append(InlineKeyboardButton(text="▶", callback_data=f"rev:nav:{q_idx + 1}"))
 
@@ -528,20 +682,26 @@ def review_nav_keyboard(q_idx: int, total: int) -> InlineKeyboardMarkup:
 def review_answer_keyboard(options: list[str], q_idx: int) -> InlineKeyboardMarkup:
     """To'g'ri javobni tanlash uchun variantlar ro'yxati."""
     rows = [
-        [InlineKeyboardButton(
-            text=f"{OPTION_LABELS[i]}) {opt[:35]}",
-            callback_data=f"rev:sans:{i}:{q_idx}",
-        )]
+        [
+            InlineKeyboardButton(
+                text=f"{OPTION_LABELS[i]}) {opt[:35]}",
+                callback_data=f"rev:sans:{i}:{q_idx}",
+            )
+        ]
         for i, opt in enumerate(options)
     ]
-    rows.append([InlineKeyboardButton(text="❌ Bekor", callback_data=f"rev:nav:{q_idx}")])
+    rows.append(
+        [InlineKeyboardButton(text="❌ Bekor", callback_data=f"rev:nav:{q_idx}")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def review_delete_confirm_keyboard(q_idx: int) -> InlineKeyboardMarkup:
     return _kb(
         [
-            InlineKeyboardButton(text="🗑 Ha, o'chir", callback_data=f"rev:cdel:{q_idx}"),
+            InlineKeyboardButton(
+                text="🗑 Ha, o'chir", callback_data=f"rev:cdel:{q_idx}"
+            ),
             InlineKeyboardButton(text="❌ Yo'q", callback_data=f"rev:nav:{q_idx}"),
         ]
     )
@@ -551,6 +711,10 @@ def quiz_done_with_review_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
     """Quiz tayyor bo'lganda ko'rsatiladigan tugmalar."""
     return _kb(
         [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:play:{quiz_id}")],
-        [InlineKeyboardButton(text="📝 Tahrirlash", callback_data=f"rev:start:{quiz_id}")],
+        [
+            InlineKeyboardButton(
+                text="📝 Tahrirlash", callback_data=f"rev:start:{quiz_id}"
+            )
+        ],
         [InlineKeyboardButton(text="📤 Yana yuklash", callback_data="up:retry")],
     )

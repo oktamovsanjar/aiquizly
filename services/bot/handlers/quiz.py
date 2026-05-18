@@ -1,23 +1,34 @@
 """Quiz oqimi — ko'rish, tanlash, o'ynash, to'xtatish, natijalar."""
+
 import asyncio
 import logging
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    CallbackQuery, Message, PollAnswer,
-    InlineKeyboardButton, InlineKeyboardMarkup,
+    CallbackQuery,
+    Message,
+    PollAnswer,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
 )
 
 from fsm.states import QuizStates
 from aiogram.filters import StateFilter
 
 from keyboards.inline import (
-    quiz_browse_keyboard, quiz_list_keyboard, my_quiz_list_keyboard,
-    quiz_manage_keyboard, quiz_delete_confirm_keyboard,
-    set_select_keyboard, time_select_keyboard, quiz_start_keyboard,
-    stop_quiz_keyboard, pause_quiz_keyboard, quiz_result_keyboard,
-    retry_result_keyboard, subscribe_group_keyboard,
+    quiz_browse_keyboard,
+    quiz_list_keyboard,
+    my_quiz_list_keyboard,
+    quiz_manage_keyboard,
+    quiz_delete_confirm_keyboard,
+    set_select_keyboard,
+    time_select_keyboard,
+    quiz_start_keyboard,
+    stop_quiz_keyboard,
+    pause_quiz_keyboard,
+    quiz_result_keyboard,
+    retry_result_keyboard,
 )
 from utils.api import ai_engine_client, game_client
 from utils.i18n import t
@@ -39,6 +50,7 @@ def _timer_key(user_id: int, poll_id: str) -> str:
 
 # ─────────────────────────── Boshlash menyusi ───────────────────────────
 
+
 @router.message(F.text.in_({"▶️ Boshlash", "▶️ Start", "▶️ Начать"}))
 @router.message(Command("quiz"))
 async def quiz_start_menu(message: Message, state: FSMContext) -> None:
@@ -55,6 +67,7 @@ async def quiz_start_menu(message: Message, state: FSMContext) -> None:
 async def upload_menu(cb: CallbackQuery, state: FSMContext) -> None:
     """Fayl yuklash menyusiga o'tish (inline tugma orqali)."""
     from keyboards.inline import upload_menu_keyboard
+
     data = await state.get_data()
     lang = data.get("language_code", "uz")
     await state.set_state(QuizStates.FILE_UPLOAD)
@@ -79,6 +92,7 @@ async def back_to_menu(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─────────────────────────── Mening quizlarim ───────────────────────────
 
+
 @router.callback_query(F.data == "qb:my")
 async def browse_my_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(QuizStates.BROWSING_MY_QUIZZES)
@@ -92,10 +106,16 @@ async def browse_my_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
     if not quizzes:
         await cb.message.edit_text(
             "📂 Sizda hali quizlar yo'q.\n\nFayl yuklash orqali yarating!",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📤 Quiz yaratish", callback_data="up:menu")],
-                [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
-            ]),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="📤 Quiz yaratish", callback_data="up:menu"
+                        )
+                    ],
+                    [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
+                ]
+            ),
         )
         await cb.answer()
         return
@@ -108,6 +128,7 @@ async def browse_my_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─────────────────────────── Quiz boshqaruvi (manage) ───────────────────────────
+
 
 async def _bot_username(bot) -> str:
     try:
@@ -135,7 +156,9 @@ async def quiz_manage_menu(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.message.edit_text(
         f"⚙️ <b>{title}</b>\n"
         f"📊 {total} ta savol  {vis_icon} {'Ochiq' if is_public else 'Yopiq'}",
-        reply_markup=quiz_manage_keyboard(quiz_id, is_public, await _bot_username(cb.bot)),
+        reply_markup=quiz_manage_keyboard(
+            quiz_id, is_public, await _bot_username(cb.bot)
+        ),
     )
     await cb.answer()
 
@@ -159,7 +182,9 @@ async def quiz_toggle_visibility(cb: CallbackQuery) -> None:
     await cb.message.edit_text(
         f"⚙️ <b>{title}</b>\n"
         f"📊 {total} ta savol  {vis_icon} {'Ochiq' if new_public else 'Yopiq'}",
-        reply_markup=quiz_manage_keyboard(quiz_id, new_public, await _bot_username(cb.bot)),
+        reply_markup=quiz_manage_keyboard(
+            quiz_id, new_public, await _bot_username(cb.bot)
+        ),
     )
 
 
@@ -201,10 +226,16 @@ async def quiz_delete_execute(cb: CallbackQuery) -> None:
     if not quizzes:
         await cb.message.edit_text(
             "📂 Sizda hali quizlar yo'q.\n\nFayl yuklash orqali yarating!",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📤 Quiz yaratish", callback_data="up:menu")],
-                [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
-            ]),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="📤 Quiz yaratish", callback_data="up:menu"
+                        )
+                    ],
+                    [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
+                ]
+            ),
         )
     else:
         await cb.message.edit_text(
@@ -244,7 +275,9 @@ async def quiz_rename_input(message: Message, state: FSMContext) -> None:
     new_title = message.text.strip()[:100]
     try:
         updated = await ai_engine_client().update_quiz(quiz_id, title=new_title)
-        await message.answer(f"✅ Nom o'zgartirildi: <b>{updated.get('title', new_title)}</b>")
+        await message.answer(
+            f"✅ Nom o'zgartirildi: <b>{updated.get('title', new_title)}</b>"
+        )
     except Exception:
         await message.answer("❌ Xatolik yuz berdi.")
         await state.clear()
@@ -260,13 +293,16 @@ async def quiz_rename_input(message: Message, state: FSMContext) -> None:
         await message.answer(
             f"⚙️ <b>{quiz.get('title', new_title)}</b>\n"
             f"📊 {total} ta savol  {vis_icon} {'Ochiq' if is_public else 'Yopiq'}",
-            reply_markup=quiz_manage_keyboard(quiz_id, is_public, await _bot_username(message.bot)),
+            reply_markup=quiz_manage_keyboard(
+                quiz_id, is_public, await _bot_username(message.bot)
+            ),
         )
     except Exception:
         pass
 
 
 # ─────────────────────────── Obunalarim ───────────────────────────
+
 
 @router.callback_query(F.data == "qb:subs")
 async def browse_subscriptions(cb: CallbackQuery, state: FSMContext) -> None:
@@ -278,10 +314,12 @@ async def browse_subscriptions(cb: CallbackQuery, state: FSMContext) -> None:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(QuizGroup)
-            .join(QuizGroupSubscriber, QuizGroupSubscriber.quiz_group_id == QuizGroup.id)
+            .join(
+                QuizGroupSubscriber, QuizGroupSubscriber.quiz_group_id == QuizGroup.id
+            )
             .join(User, User.id == QuizGroupSubscriber.user_id)
             .where(User.telegram_id == cb.from_user.id)
-            .where(QuizGroup.is_active == True)
+            .where(QuizGroup.is_active)
         )
         groups = result.scalars().all()
 
@@ -289,15 +327,22 @@ async def browse_subscriptions(cb: CallbackQuery, state: FSMContext) -> None:
         await cb.message.edit_text(
             "📌 Siz hali hech qaysi quiz guruhiga obuna bo'lmagansiz.\n\n"
             "Ommaviy quizlarda guruhlarni topishingiz mumkin.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🌐 Ommaviy quizlar", callback_data="qb:public")],
-                [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
-            ]),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🌐 Ommaviy quizlar", callback_data="qb:public"
+                        )
+                    ],
+                    [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
+                ]
+            ),
         )
         await cb.answer()
         return
 
     from keyboards.inline import quiz_group_list_keyboard
+
     groups_data = [
         {"id": str(g.id), "name": g.name, "subscriber_count": g.subscriber_count}
         for g in groups
@@ -311,6 +356,7 @@ async def browse_subscriptions(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─────────────────────────── Ommaviy / Trend ───────────────────────────
 
+
 @router.callback_query(F.data.in_({"qb:public", "qb:trending", "qb:random"}))
 async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(QuizStates.BROWSING_PUBLIC)
@@ -320,8 +366,11 @@ async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
             data = await ai_engine_client().get_quizzes(tag=None, public=True)
         elif mode == "random":
             import random
+
             data = await ai_engine_client().get_quizzes(public=True, page_size=20)
-            quizzes_all = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
+            quizzes_all = (
+                data.get("quizzes", []) if isinstance(data, dict) else (data or [])
+            )
             if quizzes_all:
                 random.shuffle(quizzes_all)
                 quizzes_all = quizzes_all[:5]
@@ -335,9 +384,11 @@ async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
     if not quizzes:
         await cb.message.edit_text(
             "🌐 Hozircha ommaviy quizlar yo'q.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")]
-            ]),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")]
+                ]
+            ),
         )
         await cb.answer()
         return
@@ -350,6 +401,7 @@ async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─────────────────────────── Quiz tanlash → Set tanlash ───────────────────────────
+
 
 @router.callback_query(F.data.startswith("qb:play:"))
 async def play_quiz_direct(cb: CallbackQuery, state: FSMContext) -> None:
@@ -387,6 +439,7 @@ async def select_quiz(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─────────────────────────── Navigatsiya / Orqaga ───────────────────────────
+
 
 @router.callback_query(F.data == "qb:back")
 async def back_to_quiz_list(cb: CallbackQuery, state: FSMContext) -> None:
@@ -429,7 +482,7 @@ async def change_time(cb: CallbackQuery, state: FSMContext) -> None:
 async def quiz_list_page(cb: CallbackQuery, state: FSMContext) -> None:
     """Quiz ro'yxatida sahifalar."""
     page = int(cb.data.split(":")[2])
-    (data, browsing_state) = await asyncio.gather(state.get_data(), state.get_state())
+    data, browsing_state = await asyncio.gather(state.get_data(), state.get_state())
     user_id = cb.from_user.id
     try:
         if browsing_state == QuizStates.BROWSING_MY_QUIZZES.state:
@@ -451,6 +504,7 @@ async def quiz_list_page(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─────────────────────────── Set → Vaqt tanlash ───────────────────────────
+
 
 @router.callback_query(F.data.startswith("qp:set:"))
 async def select_set(cb: CallbackQuery, state: FSMContext) -> None:
@@ -490,7 +544,9 @@ async def select_time(cb: CallbackQuery, state: FSMContext) -> None:
         f"📋 <b>{quiz_title}</b> — Set {set_number}\n"
         f"⏱ Har savol: {time_sec} soniya\n\n"
         "Tayyormisiz?",
-        reply_markup=quiz_start_keyboard(quiz_id, set_number, time_sec, shuffle_q, shuffle_o),
+        reply_markup=quiz_start_keyboard(
+            quiz_id, set_number, time_sec, shuffle_q, shuffle_o
+        ),
     )
     await cb.answer()
 
@@ -504,7 +560,9 @@ async def toggle_shuffle_questions(cb: CallbackQuery, state: FSMContext) -> None
     shuffle_o = data.get("shuffle_options", False)
     await state.update_data(shuffle_questions=shuffle_q)
     await cb.message.edit_reply_markup(
-        reply_markup=quiz_start_keyboard(quiz_id, set_number, time_sec, shuffle_q, shuffle_o)
+        reply_markup=quiz_start_keyboard(
+            quiz_id, set_number, time_sec, shuffle_q, shuffle_o
+        )
     )
     await cb.answer()
 
@@ -518,12 +576,15 @@ async def toggle_shuffle_options(cb: CallbackQuery, state: FSMContext) -> None:
     shuffle_o = not data.get("shuffle_options", False)
     await state.update_data(shuffle_options=shuffle_o)
     await cb.message.edit_reply_markup(
-        reply_markup=quiz_start_keyboard(quiz_id, set_number, time_sec, shuffle_q, shuffle_o)
+        reply_markup=quiz_start_keyboard(
+            quiz_id, set_number, time_sec, shuffle_q, shuffle_o
+        )
     )
     await cb.answer()
 
 
 # ─────────────────────────── Quiz boshlash ───────────────────────────
+
 
 @router.callback_query(F.data.startswith("qp:start:"))
 async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
@@ -534,9 +595,14 @@ async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
 
     await state.set_state(QuizStates.QUIZ_PLAYING)
     await state.update_data(
-        quiz_id=quiz_id, set_number=set_number, time_sec=time_sec,
-        current_q_index=0, skip_count=0,
-        correct=0, wrong=0, skipped=0,
+        quiz_id=quiz_id,
+        set_number=set_number,
+        time_sec=time_sec,
+        current_q_index=0,
+        skip_count=0,
+        correct=0,
+        wrong=0,
+        skipped=0,
         wrong_question_ids=[],
         current_poll_id=None,
     )
@@ -553,7 +619,9 @@ async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
     )
 
     if isinstance(questions_result, Exception):
-        await cb.message.edit_text("❌ Savollarni yuklab bo'lmadi. Qaytadan urinib ko'ring.")
+        await cb.message.edit_text(
+            "❌ Savollarni yuklab bo'lmadi. Qaytadan urinib ko'ring."
+        )
         await state.clear()
         await cb.answer()
         return
@@ -568,6 +636,7 @@ async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
     fsm_data = await state.get_data()
     if fsm_data.get("shuffle_questions"):
         import random
+
         random.shuffle(questions)
 
     await state.update_data(questions=questions, total=len(questions))
@@ -583,7 +652,10 @@ async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─────────────────────────── Savol yuborish + auto-advance timer ───────────────────────────
 
-async def _send_next_question(chat_id: int, user_id: int, state: FSMContext, bot) -> None:
+
+async def _send_next_question(
+    chat_id: int, user_id: int, state: FSMContext, bot
+) -> None:
     """Keyingi savolni yuboradi va vaqt tugaganda auto-advance timerni o'rnatadi."""
     data, current_state = await asyncio.gather(state.get_data(), state.get_state())
 
@@ -611,6 +683,7 @@ async def _send_next_question(chat_id: int, user_id: int, state: FSMContext, bot
     # Options shuffle: indekslarni kuzatib boramiz
     if data.get("shuffle_options") and len(options) > 1:
         import random
+
         indexed = list(enumerate(options))
         random.shuffle(indexed)
         # orig_positions[i] = original index of the option now at position i
@@ -666,9 +739,13 @@ async def _send_next_question(chat_id: int, user_id: int, state: FSMContext, bot
 
 
 async def _auto_advance(
-    bot, chat_id: int, user_id: int,
-    state: FSMContext, poll_id: str,
-    time_sec: int, task_key: str,
+    bot,
+    chat_id: int,
+    user_id: int,
+    state: FSMContext,
+    poll_id: str,
+    time_sec: int,
+    task_key: str,
 ) -> None:
     """Vaqt tugagach (time_sec + 1.5s), user javob bermagan bo'lsa keyingi savolga o'tish."""
     await asyncio.sleep(time_sec + 1.5)
@@ -689,7 +766,9 @@ async def _auto_advance(
     idx = data.get("current_q_index", 1) - 1
     skip_count = data.get("skip_count", 0) + 1
     skipped = data.get("skipped", 0) + 1
-    await state.update_data(skipped=skipped, skip_count=skip_count, current_poll_id=None)
+    await state.update_data(
+        skipped=skipped, skip_count=skip_count, current_poll_id=None
+    )
 
     # Game servisga skip yuborish
     game_id = data.get("game_id")
@@ -723,6 +802,7 @@ async def _auto_advance(
 
 # ─────────────────────────── Poll javobi ───────────────────────────
 
+
 @router.poll_answer()
 async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext, bot: Bot) -> None:
     """Foydalanuvchi poll ga javob berganda."""
@@ -732,8 +812,6 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext, bot: Bot) -
 
     current_poll_id = data.get("current_poll_id")
     last_poll_id = data.get("last_poll_id")
-
-    late_answer = False  # timer avval ishlagan, javob kech keldi
 
     if poll_answer.poll_id == current_poll_id:
         # Oddiy holat: timer hali ishlamagan, javob o'z vaqtida keldi
@@ -747,7 +825,6 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext, bot: Bot) -
         # Race condition: timer on_poll_answer dan oldin ishladi.
         # Agar _auto_advance keyingi savolni yuborgan bo'lsa, last_poll_id yangilangan
         # bo'ladi → bu shart bajarilmaydi. Demak faqat PAUSED yoki skip holati.
-        late_answer = True
         # Noto'g'ri hisoblangan skipni bekor qilamiz
         await state.update_data(
             skip_count=max(0, data.get("skip_count", 0) - 1),
@@ -822,10 +899,13 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext, bot: Bot) -
             pass
 
     # late_answer holatida ham oddiy holat kabi keyingi savolni yuboramiz
-    await _send_next_question(poll_answer.user.id, poll_answer.user.id, state, bot)  # noqa: E501
+    await _send_next_question(
+        poll_answer.user.id, poll_answer.user.id, state, bot
+    )  # noqa: E501
 
 
 # ─────────────────────────── To'xtatish / Pauza ───────────────────────────
+
 
 @router.message(Command("stop"))
 @router.callback_query(F.data == "qp:stop")
@@ -846,14 +926,18 @@ async def stop_quiz(event, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "qp:stop_result")
 async def stop_and_show_result(cb: CallbackQuery, state: FSMContext) -> None:
-    await _show_results(cb.message.chat.id, cb.from_user.id, state, cb.bot, message=cb.message)
+    await _show_results(
+        cb.message.chat.id, cb.from_user.id, state, cb.bot, message=cb.message
+    )
     await cb.answer()
 
 
 @router.callback_query(F.data == "qp:pause_finish")
 async def pause_and_finish(cb: CallbackQuery, state: FSMContext) -> None:
     """Pauza holatidan natijalarni ko'rsatish."""
-    await _show_results(cb.message.chat.id, cb.from_user.id, state, cb.bot, message=cb.message)
+    await _show_results(
+        cb.message.chat.id, cb.from_user.id, state, cb.bot, message=cb.message
+    )
     await cb.answer()
 
 
@@ -868,6 +952,7 @@ async def continue_quiz(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─────────────────────────── Natijalar ───────────────────────────
+
 
 async def _show_results(
     chat_id: int, user_id: int, state: FSMContext, bot, message=None
@@ -906,6 +991,7 @@ async def _show_results(
     if game_id:
         try:
             from utils.api import _cache_invalidate
+
             result = await game_client().finish_game(game_id, status="completed")
             xp_earned = result.get("xp_earned", 0)
             new_achievements = result.get("new_achievements", [])
@@ -927,7 +1013,9 @@ async def _show_results(
     if new_achievements:
         text += f"\n🏅 Yangi yutuq: {', '.join(new_achievements)}"
 
-    next_set = set_number + 1 if (correct + wrong + skipped) >= total and total > 0 else None
+    next_set = (
+        set_number + 1 if (correct + wrong + skipped) >= total and total > 0 else None
+    )
 
     try:
         me = await bot.get_me()
@@ -954,6 +1042,7 @@ async def _show_results(
 
 
 # ─────────────────────────── Xatolarni qayta ishlash ───────────────────────────
+
 
 @router.callback_query(F.data.startswith("qp:retry:"))
 async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
@@ -985,11 +1074,15 @@ async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
         questions=wrong_questions,
         total=len(wrong_questions),
         current_q_index=0,
-        correct=0, wrong=0, skipped=0,
+        correct=0,
+        wrong=0,
+        skipped=0,
         skip_count=0,
         wrong_question_ids=[],
         current_poll_id=None,
-        quiz_id=quiz_id, set_number=set_number, time_sec=time_sec,
+        quiz_id=quiz_id,
+        set_number=set_number,
+        time_sec=time_sec,
         is_retry=True,
     )
 
@@ -1032,6 +1125,7 @@ async def show_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─────────────────────────── Qidiruv ───────────────────────────
 
+
 @router.message(F.text.in_({"🔍 Qidirish", "🔍 Search", "🔍 Поиск"}))
 async def search_menu(message: Message, state: FSMContext) -> None:
     await state.set_state(QuizStates.SEARCHING)
@@ -1049,18 +1143,28 @@ async def search_menu(message: Message, state: FSMContext) -> None:
         tag_names = ["#dtm", "#ingliz_tili", "#matematika"]
 
     tags_text = "  ".join(tag_names)
-    await message.answer(
-        t("quiz_search_prompt", lang) + f"\n\n{tags_text}"
-    )
+    await message.answer(t("quiz_search_prompt", lang) + f"\n\n{tags_text}")
 
 
 _MENU_BUTTONS = {
-    "▶️ Boshlash", "🔍 Qidirish", "📤 Quiz Yaratish", "🏆 Reyting",
-    "👤 Profil", "👥 Taklif qilish",
-    "▶️ Начать", "🔍 Поиск", "📤 Создать квиз", "🏆 Рейтинг",
-    "👤 Профиль", "👥 Пригласить",
-    "▶️ Start", "🔍 Search", "📤 Create Quiz", "🏆 Leaderboard",
-    "👤 Profile", "👥 Invite",
+    "▶️ Boshlash",
+    "🔍 Qidirish",
+    "📤 Quiz Yaratish",
+    "🏆 Reyting",
+    "👤 Profil",
+    "👥 Taklif qilish",
+    "▶️ Начать",
+    "🔍 Поиск",
+    "📤 Создать квиз",
+    "🏆 Рейтинг",
+    "👤 Профиль",
+    "👥 Пригласить",
+    "▶️ Start",
+    "🔍 Search",
+    "📤 Create Quiz",
+    "🏆 Leaderboard",
+    "👤 Profile",
+    "👥 Invite",
 }
 
 

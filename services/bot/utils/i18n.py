@@ -2,6 +2,7 @@
 Oddiy i18n — barcha bot xabarlari uchun tarjima.
 Foydalanish: t("key", lang)
 """
+
 from typing import Optional
 
 _TEXTS: dict[str, dict[str, str]] = {

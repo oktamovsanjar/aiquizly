@@ -6,6 +6,7 @@ Bot buyruqlari handlerlari — BOT_UX.md §21
 /cancel   — Bekor qilish
 /quiz     — Tez quiz
 """
+
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -19,12 +20,24 @@ router = Router()
 
 # Barcha til variantlari bilan asosiy menyu tugmalari
 _ALL_MENU_BUTTONS = {
-    "▶️ Boshlash", "🔍 Qidirish", "📤 Quiz Yaratish", "🏆 Reyting",
-    "👤 Profil", "👥 Taklif qilish",
-    "▶️ Начать", "🔍 Поиск", "📤 Создать квиз", "🏆 Рейтинг",
-    "👤 Профиль", "👥 Пригласить",
-    "▶️ Start", "🔍 Search", "📤 Create Quiz", "🏆 Leaderboard",
-    "👤 Profile", "👥 Invite",
+    "▶️ Boshlash",
+    "🔍 Qidirish",
+    "📤 Quiz Yaratish",
+    "🏆 Reyting",
+    "👤 Profil",
+    "👥 Taklif qilish",
+    "▶️ Начать",
+    "🔍 Поиск",
+    "📤 Создать квиз",
+    "🏆 Рейтинг",
+    "👤 Профиль",
+    "👥 Пригласить",
+    "▶️ Start",
+    "🔍 Search",
+    "📤 Create Quiz",
+    "🏆 Leaderboard",
+    "👤 Profile",
+    "👥 Invite",
 }
 
 
@@ -40,21 +53,26 @@ async def menu_button_in_state(message: Message, state: FSMContext) -> None:
 
     if text in {"▶️ Boshlash", "▶️ Начать", "▶️ Start"}:
         from keyboards.inline import quiz_browse_keyboard
+
         await message.answer("Qayerdan o'ynaysiz?", reply_markup=quiz_browse_keyboard())
     elif text in {"🔍 Qidirish", "🔍 Поиск", "🔍 Search"}:
         await state.set_state(QuizStates.SEARCHING)
         await message.answer("🔍 Qidiring yoki teg tanlang:\n\nYoki matn yozing...")
     elif text in {"🏆 Reyting", "🏆 Рейтинг", "🏆 Leaderboard"}:
         from keyboards.inline import leaderboard_tabs_keyboard
+
         await message.answer("🏆 Reyting:", reply_markup=leaderboard_tabs_keyboard())
     elif text in {"👤 Profil", "👤 Профиль", "👤 Profile"}:
         from handlers.profile import show_profile
+
         await show_profile(message, state)
     elif text in {"👥 Taklif qilish", "👥 Пригласить", "👥 Invite"}:
         from handlers.profile import show_referral
+
         await show_referral(message)
     elif text in {"📤 Quiz Yaratish", "📤 Создать квиз", "📤 Create Quiz"}:
         from handlers.upload import quiz_create_menu
+
         await quiz_create_menu(message, state)
 
 
@@ -89,25 +107,35 @@ async def cmd_settings(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     lang = data.get("language_code", "uz")
 
-    lang_display = {"uz": "🇺🇿 O'zbek", "ru": "🇷🇺 Русский", "en": "🇬🇧 English"}.get(lang, "🇺🇿 O'zbek")
+    lang_display = {"uz": "🇺🇿 O'zbek", "ru": "🇷🇺 Русский", "en": "🇬🇧 English"}.get(
+        lang, "🇺🇿 O'zbek"
+    )
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🇺🇿 O'zbek", callback_data="set:lang:uz"),
-            InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set:lang:ru"),
-            InlineKeyboardButton(text="🇬🇧 English", callback_data="set:lang:en"),
-        ],
-        [
-            InlineKeyboardButton(text="🔔 Bildirish: Yoq", callback_data="set:notif:off"),
-            InlineKeyboardButton(text="🔔 Bildirish: Yoqish", callback_data="set:notif:on"),
-        ],
-        [InlineKeyboardButton(text="⏰ Eslatma vaqti", callback_data="set:reminder")],
-    ])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🇺🇿 O'zbek", callback_data="set:lang:uz"),
+                InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set:lang:ru"),
+                InlineKeyboardButton(text="🇬🇧 English", callback_data="set:lang:en"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔔 Bildirish: Yoq", callback_data="set:notif:off"
+                ),
+                InlineKeyboardButton(
+                    text="🔔 Bildirish: Yoqish", callback_data="set:notif:on"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⏰ Eslatma vaqti", callback_data="set:reminder"
+                )
+            ],
+        ]
+    )
 
     await message.answer(
-        f"⚙️ <b>Sozlamalar</b>\n\n"
-        f"Til: {lang_display}\n"
-        "Bildirish: Yoqilgan\n",
+        f"⚙️ <b>Sozlamalar</b>\n\n" f"Til: {lang_display}\n" "Bildirish: Yoqilgan\n",
         reply_markup=kb,
     )
 
@@ -132,6 +160,7 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
 async def cmd_quick_quiz(message: Message, state: FSMContext) -> None:
     """Oxirgi to'plamdan tez quiz boshlash."""
     from keyboards.inline import quiz_browse_keyboard
+
     await message.answer(
         "Qayerdan o'ynaysiz?",
         reply_markup=quiz_browse_keyboard(),

@@ -2,6 +2,7 @@
 SQLAlchemy async models for bot-owned tables.
 Schema matches shared/migrations/001_create_users.sql and 003_create_quiz_tables.sql.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -30,7 +31,9 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -41,8 +44,12 @@ class User(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     last_active_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     quiz_groups: Mapped[list[QuizGroup]] = relationship(
         "QuizGroup", back_populates="owner", cascade="all, delete-orphan"
@@ -60,7 +67,9 @@ class User(Base):
 class QuizGroup(Base):
     __tablename__ = "quiz_groups"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -70,8 +79,12 @@ class QuizGroup(Base):
     subscriber_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     quiz_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     owner: Mapped[User] = relationship("User", back_populates="quiz_groups")
     subscribers: Mapped[list[QuizGroupSubscriber]] = relationship(
@@ -90,18 +103,26 @@ class QuizGroup(Base):
 class QuizGroupSubscriber(Base):
     __tablename__ = "quiz_group_subscribers"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     quiz_group_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("quiz_groups.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("quiz_groups.id", ondelete="CASCADE"),
+        nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     notify: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    subscribed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    subscribed_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
 
     user: Mapped[User] = relationship("User")
-    quiz_group: Mapped[QuizGroup] = relationship("QuizGroup", back_populates="subscribers")
+    quiz_group: Mapped[QuizGroup] = relationship(
+        "QuizGroup", back_populates="subscribers"
+    )
 
     __table_args__ = (
         UniqueConstraint("quiz_group_id", "user_id", name="idx_qgs_unique"),
@@ -112,7 +133,9 @@ class QuizGroupSubscriber(Base):
 class Referral(Base):
     __tablename__ = "referrals"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     referrer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -121,7 +144,9 @@ class Referral(Base):
     )
     bonus_given: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     bonus_days: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
 
     __table_args__ = (
         UniqueConstraint("referrer_id", "referred_id", name="idx_referrals_unique"),
@@ -135,7 +160,9 @@ class Referral(Base):
 class TelegramGroup(Base):
     __tablename__ = "telegram_groups"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     chat_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     added_by: Mapped[uuid.UUID | None] = mapped_column(
@@ -143,16 +170,20 @@ class TelegramGroup(Base):
     )
     min_voters: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     voting_timeout: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
-    who_can_start: Mapped[str] = mapped_column(String(20), nullable=False, default="all")
+    who_can_start: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="all"
+    )
     linked_quiz_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     stop_min_voters: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    __table_args__ = (
-        Index("ix_telegram_groups_chat_id", "chat_id"),
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_telegram_groups_chat_id", "chat_id"),)
 
     def __repr__(self) -> str:
         return f"<TelegramGroup id={self.id} chat_id={self.chat_id} title={self.title}>"

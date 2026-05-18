@@ -8,10 +8,16 @@ from utils.api import subscription_client
 
 logger = logging.getLogger(__name__)
 
-_PAYWALL_KB = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="⭐ Telegram Stars", callback_data="pay:monthly")],
-    [InlineKeyboardButton(text="👥 Taklif qilib yutish", callback_data="ref:invite")],
-])
+_PAYWALL_KB = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="⭐ Telegram Stars", callback_data="pay:monthly")],
+        [
+            InlineKeyboardButton(
+                text="👥 Taklif qilib yutish", callback_data="ref:invite"
+            )
+        ],
+    ]
+)
 
 _PAYWALL_TEXT = (
     "Bu oyda 3/3 fayl yuklagansiz.\n\n"

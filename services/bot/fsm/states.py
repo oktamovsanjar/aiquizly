@@ -5,6 +5,7 @@ States match BOT_UX.md §19:
   IDLE, QUIZ_SETUP, QUIZ_PLAYING, PAUSED, STOPPED,
   FILE_UPLOAD, PROCESSING, REVIEW
 """
+
 from aiogram.fsm.state import State, StatesGroup
 
 

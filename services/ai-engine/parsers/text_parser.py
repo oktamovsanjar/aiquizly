@@ -1,4 +1,5 @@
 """Stage 2: Text (.txt) parser"""
+
 import chardet
 
 

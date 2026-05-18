@@ -10,6 +10,7 @@ Clients:
   SubscriptionClient → subscription service (Python / FastAPI)
   NotifierClient     → notifier service (Go)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,6 +50,7 @@ def _cache_invalidate(prefix: str) -> None:
     for k in list(_cache):
         if k.startswith(prefix):
             del _cache[k]
+
 
 GAME_SERVICE_URL: str = os.environ.get("GAME_SERVICE_URL", "http://game:8081")
 AI_ENGINE_URL: str = os.environ.get("AI_ENGINE_URL", "http://ai-engine:8002")
@@ -154,11 +156,6 @@ class GameClient:
         _cache_invalidate("lb:")
         return result
 
-    async def get_user_stats(self, user_id: int) -> dict[str, Any]:
-        resp = await self._http.get(f"/users/{user_id}/stats")
-        _raise_for_service("game", resp)
-        return resp.json()
-
     async def get_leaderboard(
         self,
         period: str = "all",
@@ -173,6 +170,7 @@ class GameClient:
             resp = await self._http.get(f"/leaderboard/{period}", params=params)
             _raise_for_service("game", resp)
             return resp.json()
+
         return await _cached(f"lb:{period}:{tag}:{limit}", ttl=30, coro=_fetch())
 
     async def get_user_rank(self, user_id: int, period: str = "all") -> dict[str, Any]:
@@ -182,6 +180,7 @@ class GameClient:
             )
             _raise_for_service("game", resp)
             return resp.json()
+
         return await _cached(f"rank:{user_id}:{period}", ttl=30, coro=_fetch())
 
     async def get_user_stats(self, user_id: int) -> dict[str, Any]:
@@ -189,6 +188,7 @@ class GameClient:
             resp = await self._http.get(f"/users/{user_id}/stats")
             _raise_for_service("game", resp)
             return resp.json()
+
         return await _cached(f"stats:{user_id}", ttl=20, coro=_fetch())
 
     async def award_xp(self, user_id: int, xp: int, reason: str) -> dict[str, Any]:
@@ -202,10 +202,10 @@ class GameClient:
         _cache_invalidate("lb:")
         return resp.json()
 
-    async def get_group_leaderboard(self, chat_id: int, game_session_id: str) -> dict[str, Any]:
-        resp = await self._http.get(
-            f"/groups/{chat_id}/leaderboard/{game_session_id}"
-        )
+    async def get_group_leaderboard(
+        self, chat_id: int, game_session_id: str
+    ) -> dict[str, Any]:
+        resp = await self._http.get(f"/groups/{chat_id}/leaderboard/{game_session_id}")
         _raise_for_service("game", resp)
         return resp.json()
 
@@ -296,12 +296,13 @@ class AIEngineClient:
             return resp.json()
 
         cache_key = f"quizzes:u{user_id}:p{public}:pg{page}"
-        ttl = 15.0 if user_id else 30.0   # o'z quizlari tezroq eskiradi
+        ttl = 15.0 if user_id else 30.0  # o'z quizlari tezroq eskiradi
 
         async def _fetch():
             resp = await self._http.get("/quizzes", params=params)
             _raise_for_service("ai-engine", resp)
             return resp.json()
+
         return await _cached(cache_key, ttl=ttl, coro=_fetch())
 
     async def get_quiz(self, quiz_id: str) -> dict[str, Any]:
@@ -309,6 +310,7 @@ class AIEngineClient:
             resp = await self._http.get(f"/quizzes/{quiz_id}")
             _raise_for_service("ai-engine", resp)
             return resp.json()
+
         return await _cached(f"quiz:{quiz_id}", ttl=30, coro=_fetch())
 
     async def get_questions(
@@ -323,6 +325,7 @@ class AIEngineClient:
             _raise_for_service("ai-engine", resp)
             data = resp.json()
             return data if isinstance(data, list) else data.get("questions", [])
+
         return await _cached(f"qset:{quiz_id}:{set_number}", ttl=60, coro=_fetch())
 
     async def save_quiz(
@@ -405,7 +408,9 @@ class AIEngineClient:
         _cache_invalidate(f"quiz:{quiz_id}")
         return resp.json()
 
-    async def update_quiz_visibility(self, quiz_id: str, is_public: bool) -> dict[str, Any]:
+    async def update_quiz_visibility(
+        self, quiz_id: str, is_public: bool
+    ) -> dict[str, Any]:
         return await self.update_quiz(quiz_id, is_public=is_public)
 
     async def delete_quiz(self, quiz_id: str) -> dict[str, Any]:

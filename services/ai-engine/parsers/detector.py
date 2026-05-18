@@ -1,6 +1,5 @@
 """Stage 1: Format Detector — faylni turini aniqlaydi"""
 
-
 SUPPORTED_FORMATS = {
     ".docx": "word",
     ".pdf": "pdf",

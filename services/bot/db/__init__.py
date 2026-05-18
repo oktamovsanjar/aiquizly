@@ -5,6 +5,7 @@ Environment variables:
   DATABASE_URL — asyncpg DSN, e.g.
                  postgresql+asyncpg://user:pass@host/dbname
 """
+
 from __future__ import annotations
 
 import os

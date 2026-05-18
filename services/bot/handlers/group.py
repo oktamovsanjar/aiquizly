@@ -10,6 +10,7 @@ Handler oqimlari:
   §13.3 — Obuna bo'lish (boshqa user link orqali)
   §13.4 — Obunalarim (subscribe qilingan guruhlar ro'yxati)
 """
+
 import logging
 import re
 import uuid
@@ -23,12 +24,16 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from db import AsyncSessionLocal
 from db.models import QuizGroup, QuizGroupSubscriber, User
 from fsm.states import QuizStates
-from keyboards.inline import quiz_group_keyboard, quiz_group_list_keyboard, subscribe_group_keyboard
+from keyboards.inline import (
+    quiz_group_keyboard,
+    quiz_group_list_keyboard,
+    subscribe_group_keyboard,
+)
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -43,11 +48,14 @@ def _slug_from_name(name: str) -> str:
 
 
 async def _get_user_uuid(session, telegram_id: int) -> uuid.UUID | None:
-    result = await session.execute(select(User.id).where(User.telegram_id == telegram_id))
+    result = await session.execute(
+        select(User.id).where(User.telegram_id == telegram_id)
+    )
     return result.scalar_one_or_none()
 
 
 # ─────────────────────── Guruh ro'yxati ───────────────────────
+
 
 @router.callback_query(F.data == "qg:list")
 async def list_my_groups(cb: CallbackQuery, state: FSMContext) -> None:
@@ -60,7 +68,7 @@ async def list_my_groups(cb: CallbackQuery, state: FSMContext) -> None:
         result = await session.execute(
             select(QuizGroup)
             .where(QuizGroup.owner_id == user_id)
-            .where(QuizGroup.is_active == True)
+            .where(QuizGroup.is_active)
             .order_by(QuizGroup.created_at.desc())
         )
         groups = result.scalars().all()
@@ -69,10 +77,16 @@ async def list_my_groups(cb: CallbackQuery, state: FSMContext) -> None:
         await cb.message.edit_text(
             "📌 Sizda hali quiz guruh yo'q.\n\n"
             "Guruh yaratib, obunachilarga yangi quizlar haqida xabar yuboring!",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="➕ Yangi guruh yaratish", callback_data="qg:create")],
-                [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
-            ]),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="➕ Yangi guruh yaratish", callback_data="qg:create"
+                        )
+                    ],
+                    [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
+                ]
+            ),
         )
         await cb.answer()
         return
@@ -90,12 +104,13 @@ async def list_my_groups(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─────────────────────── Guruh yaratish ───────────────────────
 
+
 @router.callback_query(F.data == "qg:create")
 async def start_create_group(cb: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(QuizStates.QUIZ_GROUP_CREATE_NAME)
     await cb.message.edit_text(
         "📌 Yangi quiz guruh yaratish\n\n"
-        "Guruh nomini kiriting (masalan: \"DTM Tayyorgarlik 2025\"):"
+        'Guruh nomini kiriting (masalan: "DTM Tayyorgarlik 2025"):'
     )
     await cb.answer()
 
@@ -172,6 +187,7 @@ async def receive_group_tags(message: Message, state: FSMContext) -> None:
 
 # ─────────────────────── Guruh ko'rish ───────────────────────
 
+
 @router.callback_query(F.data.startswith("qg:view:"))
 async def view_group(cb: CallbackQuery, state: FSMContext) -> None:
     group_id = cb.data.split(":")[2]
@@ -221,6 +237,7 @@ async def view_group(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─────────────────────── Obuna bo'lish / chiqish ───────────────────────
+
 
 @router.callback_query(F.data.startswith("qg:sub:"))
 async def subscribe_group(cb: CallbackQuery, state: FSMContext) -> None:
@@ -301,6 +318,7 @@ async def unsubscribe_group(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─────────────────────── /start?start=g_slug handler ───────────────────────
 
+
 @router.message(CommandStart(deep_link=True, magic=F.args.startswith("g_")))
 async def open_group_link(message: Message, state: FSMContext) -> None:
     """Guruh link orqali kirish: /start g_<slug>"""
@@ -308,7 +326,7 @@ async def open_group_link(message: Message, state: FSMContext) -> None:
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(QuizGroup).where(QuizGroup.slug == slug).where(QuizGroup.is_active == True)
+            select(QuizGroup).where(QuizGroup.slug == slug).where(QuizGroup.is_active)
         )
         group = result.scalar_one_or_none()
 
@@ -340,14 +358,13 @@ async def open_group_link(message: Message, state: FSMContext) -> None:
 
 # ─────────────────────── Broadcast ───────────────────────
 
+
 @router.callback_query(F.data.startswith("qg:broadcast:"))
 async def start_broadcast(cb: CallbackQuery, state: FSMContext) -> None:
     group_id = cb.data.split(":")[2]
     await state.set_state(QuizStates.QUIZ_GROUP_BROADCAST)
     await state.update_data(broadcast_group_id=group_id)
-    await cb.message.answer(
-        "📢 Barcha obunachilarga yuboriladigan xabarni kiriting:"
-    )
+    await cb.message.answer("📢 Barcha obunachilarga yuboriladigan xabarni kiriting:")
     await cb.answer()
 
 
@@ -387,6 +404,7 @@ async def send_broadcast(message: Message, state: FSMContext) -> None:
 
 # ─────────────────────── Statistika ───────────────────────
 
+
 @router.callback_query(F.data.startswith("qg:stats:"))
 async def group_stats(cb: CallbackQuery, state: FSMContext) -> None:
     group_id = cb.data.split(":")[2]
@@ -406,14 +424,21 @@ async def group_stats(cb: CallbackQuery, state: FSMContext) -> None:
         f"👥 Obunachlar: {group.subscriber_count}\n"
         f"📚 To'plamlar: {group.quiz_count}\n"
         f"📅 Yaratilgan: {group.created_at.strftime('%d.%m.%Y') if group.created_at else '—'}\n",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◀ Orqaga", callback_data=f"qg:view:{group_id}")]
-        ]),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="◀ Orqaga", callback_data=f"qg:view:{group_id}"
+                    )
+                ]
+            ]
+        ),
     )
     await cb.answer()
 
 
 # ─────────────────────── Link ulashish ───────────────────────
+
 
 @router.callback_query(F.data.startswith("qg:share:"))
 async def share_group_link(cb: CallbackQuery, state: FSMContext) -> None:
@@ -421,7 +446,9 @@ async def share_group_link(cb: CallbackQuery, state: FSMContext) -> None:
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(QuizGroup.slug, QuizGroup.name).where(QuizGroup.id == uuid.UUID(group_id))
+            select(QuizGroup.slug, QuizGroup.name).where(
+                QuizGroup.id == uuid.UUID(group_id)
+            )
         )
         row = result.one_or_none()
 
@@ -437,9 +464,15 @@ async def share_group_link(cb: CallbackQuery, state: FSMContext) -> None:
         f"📤 <b>{name}</b> guruh linki:\n\n"
         f"<code>{link}</code>\n\n"
         "Do'stlaringizga yuboring — obuna bo'lsinlar!",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=link)],
-            [InlineKeyboardButton(text="◀ Orqaga", callback_data=f"qg:view:{group_id}")],
-        ]),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=link)],
+                [
+                    InlineKeyboardButton(
+                        text="◀ Orqaga", callback_data=f"qg:view:{group_id}"
+                    )
+                ],
+            ]
+        ),
     )
     await cb.answer()

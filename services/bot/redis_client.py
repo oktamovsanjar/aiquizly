@@ -6,6 +6,7 @@ DB layout (all on DB 1):
   game:{game_id}             → JSON current game state
   voting:{chat_id}:{msg_id}  → JSON voting state for a Telegram group quiz
 """
+
 from __future__ import annotations
 
 import json
@@ -43,7 +44,9 @@ async def get_session_state(user_id: int) -> dict[str, Any]:
     return json.loads(raw)
 
 
-async def set_session_state(user_id: int, state: dict[str, Any], ttl: int = 86400) -> None:
+async def set_session_state(
+    user_id: int, state: dict[str, Any], ttl: int = 86400
+) -> None:
     """Persist user session state with a TTL (default 24 h)."""
     r = get_redis()
     await r.set(f"session:{user_id}", json.dumps(state), ex=ttl)

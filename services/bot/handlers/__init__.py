@@ -14,8 +14,15 @@ from .tg_group import router as tg_group_router
 _PRIVATE = F.chat.type == "private"
 _PRIVATE_CB = F.message.chat.type == "private"
 
-for _r in [start_router, commands_router, quiz_router,
-           upload_router, review_router, group_router, profile_router]:
+for _r in [
+    start_router,
+    commands_router,
+    quiz_router,
+    upload_router,
+    review_router,
+    group_router,
+    profile_router,
+]:
     _r.message.filter(_PRIVATE)
     _r.callback_query.filter(_PRIVATE_CB)
 

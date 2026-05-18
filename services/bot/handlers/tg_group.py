@@ -11,13 +11,12 @@ Handler oqimlari:
   §14.4 — Quiz jarayoni: har savol Poll, natijalar leaderboard
   §14.5 — /top — guruh reytingi
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import uuid
-from datetime import datetime, timezone
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, IS_MEMBER, IS_NOT_MEMBER, ChatMemberUpdatedFilter
@@ -31,7 +30,7 @@ from aiogram.types import (
 from sqlalchemy import select, update
 
 from db import AsyncSessionLocal
-from db.models import TelegramGroup, User
+from db.models import TelegramGroup
 from fsm.states import QuizStates
 from keyboards.inline import (
     tg_group_settings_keyboard,
@@ -52,7 +51,7 @@ router.callback_query.filter(F.message.chat.type.in_({"group", "supergroup"}))
 # ── Voting state key helpers ──────────────────────────────────────────────────
 
 _VOTING_KEY = "tg_voting_{chat_id}"
-_QUIZ_KEY   = "tg_quiz_{chat_id}"
+_QUIZ_KEY = "tg_quiz_{chat_id}"
 
 # In-memory store for active group sessions (chat_id → session dict)
 # This is sufficient for single-instance deployments; for HA use Redis.
@@ -130,11 +129,12 @@ async def group_settings(message: Message, state: FSMContext) -> None:
 
     await message.reply(
         "⚙️ <b>Guruh sozlamalari:</b>",
-        reply_markup=tg_group_settings_keyboard(who=group.who_can_start, linked_count=linked_count),
+        reply_markup=tg_group_settings_keyboard(
+            who=group.who_can_start, linked_count=linked_count
+        ),
     )
     await state.set_state(QuizStates.TG_GROUP_SETTINGS)
     await state.update_data(settings_chat_id=message.chat.id)
-
 
 
 @router.callback_query(QuizStates.TG_GROUP_SETTINGS, F.data.startswith("tg:who:"))
@@ -147,7 +147,9 @@ async def set_who_can_start(cb: CallbackQuery, state: FSMContext) -> None:
         return
     async with AsyncSessionLocal() as db:
         await db.execute(
-            update(TelegramGroup).where(TelegramGroup.chat_id == chat_id).values(who_can_start=who)
+            update(TelegramGroup)
+            .where(TelegramGroup.chat_id == chat_id)
+            .values(who_can_start=who)
         )
         await db.commit()
     group = await _get_or_create_group(chat_id, None)
@@ -166,7 +168,9 @@ async def save_settings(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(QuizStates.TG_GROUP_SETTINGS, F.data == "tg:manage_quizzes")
-async def settings_manage_quizzes(cb: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+async def settings_manage_quizzes(
+    cb: CallbackQuery, state: FSMContext, bot: Bot
+) -> None:
     """Biriktirilgan quizlar ro'yxatini ko'rsatish."""
     chat_id = cb.message.chat.id
     data = await state.get_data()
@@ -182,7 +186,9 @@ async def settings_manage_quizzes(cb: CallbackQuery, state: FSMContext, bot: Bot
             q["id"] = qid
             linked_quizzes.append(q)
         except Exception:
-            linked_quizzes.append({"id": qid, "title": qid[:8] + "...", "total_questions": "?"})
+            linked_quizzes.append(
+                {"id": qid, "title": qid[:8] + "...", "total_questions": "?"}
+            )
 
     await cb.message.edit_text(
         f"🔗 <b>Biriktirilgan quizlar ({len(linked_quizzes)} ta):</b>",
@@ -225,7 +231,9 @@ async def lq_remove(cb: CallbackQuery, bot: Bot) -> None:
             q["id"] = qid
             linked_quizzes.append(q)
         except Exception:
-            linked_quizzes.append({"id": qid, "title": qid[:8] + "...", "total_questions": "?"})
+            linked_quizzes.append(
+                {"id": qid, "title": qid[:8] + "...", "total_questions": "?"}
+            )
 
     await cb.message.edit_text(
         f"🔗 <b>Biriktirilgan quizlar ({len(linked_quizzes)} ta):</b>",
@@ -270,7 +278,9 @@ async def lq_back(cb: CallbackQuery, bot: Bot, state: FSMContext) -> None:
     await state.update_data(settings_chat_id=chat_id)
     await cb.message.edit_text(
         "⚙️ <b>Guruh sozlamalari:</b>",
-        reply_markup=tg_group_settings_keyboard(who=group.who_can_start, linked_count=linked_count),
+        reply_markup=tg_group_settings_keyboard(
+            who=group.who_can_start, linked_count=linked_count
+        ),
     )
     await cb.answer()
 
@@ -278,15 +288,23 @@ async def lq_back(cb: CallbackQuery, bot: Bot, state: FSMContext) -> None:
 # ── §14.3  /quiz — guruhda quiz boshlash ─────────────────────────────────────
 
 
-async def _launch_voting(bot: Bot, chat_id: int, quiz_id: str, user_id: int,
-                         group: TelegramGroup, reply_to_msg_id: int | None = None) -> None:
+async def _launch_voting(
+    bot: Bot,
+    chat_id: int,
+    quiz_id: str,
+    user_id: int,
+    group: TelegramGroup,
+    reply_to_msg_id: int | None = None,
+) -> None:
     """Voting yoki to'g'ridan-to'g'ri quiz boshlash. Session allaqachon yo'q deb faraz qilinadi."""
     try:
         quiz = await ai_engine_client().get_quiz(quiz_id)
         quiz_name = quiz.get("title", quiz.get("name", "Quiz"))
         question_count = quiz.get("total_questions", 10)
     except Exception:
-        await bot.send_message(chat_id, "❌ Quiz topilmadi. Admin yangi quiz biriktirsin.")
+        await bot.send_message(
+            chat_id, "❌ Quiz topilmadi. Admin yangi quiz biriktirsin."
+        )
         return
 
     time_per_q = 30
@@ -341,9 +359,13 @@ async def group_quiz_command(message: Message, state: FSMContext, bot: Bot) -> N
     if chat_id in _group_sessions:
         phase = _group_sessions[chat_id].get("phase", "")
         if phase == "voting":
-            await message.reply("⚠️ Ovoz berish davom etmoqda. Qatnashing yoki tugashini kuting.")
+            await message.reply(
+                "⚠️ Ovoz berish davom etmoqda. Qatnashing yoki tugashini kuting."
+            )
         else:
-            await message.reply("⚠️ Quiz davom etmoqda! To'xtatish uchun /stop yuboring.")
+            await message.reply(
+                "⚠️ Quiz davom etmoqda! To'xtatish uchun /stop yuboring."
+            )
         return
 
     linked_ids = json.loads(group.linked_quiz_ids or "[]")
@@ -362,7 +384,10 @@ async def group_quiz_command(message: Message, state: FSMContext, bot: Bot) -> N
                 q["id"] = qid
                 quizzes.append(q)
         except Exception:
-            quizzes = [{"id": qid, "title": f"Quiz {i+1}", "total_questions": "?"} for i, qid in enumerate(linked_ids)]
+            quizzes = [
+                {"id": qid, "title": f"Quiz {i+1}", "total_questions": "?"}
+                for i, qid in enumerate(linked_ids)
+            ]
 
         _group_sessions[chat_id] = {"phase": "selecting", "started_by": user_id}
         await message.reply(
@@ -375,14 +400,15 @@ async def group_quiz_command(message: Message, state: FSMContext, bot: Bot) -> N
     if is_admin:
         try:
             data = await ai_engine_client().get_quizzes(user_id=user_id)
-            quizzes = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
+            quizzes = (
+                data.get("quizzes", []) if isinstance(data, dict) else (data or [])
+            )
         except Exception:
             quizzes = []
 
         if not quizzes:
             await message.reply(
-                "📂 Sizda hali quiz yo'q.\n\n"
-                "Avval botga fayl yuborib quiz yarating."
+                "📂 Sizda hali quiz yo'q.\n\n" "Avval botga fayl yuborib quiz yarating."
             )
             return
 
@@ -436,9 +462,7 @@ async def group_stop_quiz(message: Message, bot: Bot) -> None:
 
     if len(stop_voters) >= stop_min:
         _group_sessions.pop(chat_id, None)
-        await message.reply(
-            f"⏹ <b>{len(stop_voters)} ovoz</b> bilan quiz to'xtatildi!"
-        )
+        await message.reply(f"⏹ <b>{len(stop_voters)} ovoz</b> bilan quiz to'xtatildi!")
     else:
         remaining = stop_min - len(stop_voters)
         await message.reply(
@@ -458,7 +482,9 @@ async def group_select_quiz(cb: CallbackQuery, bot: Bot) -> None:
         return
 
     started_by = session.get("started_by")
-    if cb.from_user.id != started_by and not await _is_chat_admin(bot, chat_id, cb.from_user.id):
+    if cb.from_user.id != started_by and not await _is_chat_admin(
+        bot, chat_id, cb.from_user.id
+    ):
         await cb.answer("⛔ Faqat admin tanlashi mumkin!", show_alert=True)
         return
 
@@ -521,7 +547,9 @@ async def group_cancel_select(cb: CallbackQuery, bot: Bot) -> None:
 
     if session and session.get("phase") == "selecting":
         started_by = session.get("started_by")
-        if cb.from_user.id != started_by and not await _is_chat_admin(bot, chat_id, cb.from_user.id):
+        if cb.from_user.id != started_by and not await _is_chat_admin(
+            bot, chat_id, cb.from_user.id
+        ):
             await cb.answer("⛔ Faqat admin bekor qilishi mumkin!", show_alert=True)
             return
         _group_sessions.pop(chat_id, None)
@@ -552,7 +580,9 @@ async def cancel_voting(cb: CallbackQuery, bot: Bot) -> None:
 # ── Voting timeout ────────────────────────────────────────────────────────────
 
 
-async def _voting_timeout(bot: Bot, chat_id: int, vote_msg_id: int, timeout: int) -> None:
+async def _voting_timeout(
+    bot: Bot, chat_id: int, vote_msg_id: int, timeout: int
+) -> None:
     await asyncio.sleep(timeout)
     session = _group_sessions.get(chat_id)
     if not session or session.get("phase") != "voting":
@@ -708,7 +738,9 @@ async def _start_group_quiz(bot: Bot, chat_id: int) -> None:
         try:
             questions = await ai_engine_client().get_questions(quiz_id, set_number)
         except Exception:
-            logger.warning("group quiz: questions olinmadi quiz_id=%s, demo ishlatilmoqda", quiz_id)
+            logger.warning(
+                "group quiz: questions olinmadi quiz_id=%s, demo ishlatilmoqda", quiz_id
+            )
 
     if not questions:
         questions = _DEMO_QUESTIONS  # type: ignore[assignment]
@@ -767,9 +799,7 @@ async def _send_next_question(bot: Bot, chat_id: int) -> None:
     session["current_q"] = idx + 1
 
     # Keyingi savolga o'tish — poll muddati + 1 soniya
-    asyncio.create_task(
-        _wait_and_next(bot, chat_id, time_limit + 1)
-    )
+    asyncio.create_task(_wait_and_next(bot, chat_id, time_limit + 1))
 
 
 async def _wait_and_next(bot: Bot, chat_id: int, delay: int) -> None:
@@ -848,16 +878,14 @@ async def _show_group_results(bot: Bot, chat_id: int) -> None:
 
     for i, (uid, info) in enumerate(ranked):
         medal = medals[i] if i < 3 else f"{i + 1}."
-        lines.append(
-            f"{medal} {info['name']} — {info['correct']}/{q_count}"
-        )
+        lines.append(f"{medal} {info['name']} — {info['correct']}/{q_count}")
         total_correct += info["correct"]
 
     avg_pct = int(total_correct / (len(ranked) * q_count) * 100) if ranked else 0
     participant_count = len(ranked)
 
     text = (
-        f"🏁 <b>Quiz natijasi:</b>\n\n"
+        "🏁 <b>Quiz natijasi:</b>\n\n"
         + "\n".join(lines)
         + f"\n\n👥 Qatnashganlar: {participant_count} kishi\n"
         f"📊 O'rtacha: {avg_pct}%"
@@ -918,7 +946,10 @@ async def group_replay(cb: CallbackQuery, bot: Bot) -> None:
                 q["id"] = qid
                 quizzes.append(q)
         except Exception:
-            quizzes = [{"id": qid, "title": f"Quiz {i+1}", "total_questions": "?"} for i, qid in enumerate(linked_ids)]
+            quizzes = [
+                {"id": qid, "title": f"Quiz {i+1}", "total_questions": "?"}
+                for i, qid in enumerate(linked_ids)
+            ]
         _group_sessions[chat_id] = {"phase": "selecting", "started_by": cb.from_user.id}
         await cb.message.edit_text(
             "📋 <b>Qaysi quizni boshlash kerak?</b>",

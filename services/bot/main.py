@@ -5,7 +5,11 @@ import os
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllGroupChats
+from aiogram.types import (
+    BotCommand,
+    BotCommandScopeDefault,
+    BotCommandScopeAllGroupChats,
+)
 from aiohttp import web
 
 from handlers import router
@@ -22,12 +26,14 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 
 
 async def health_handler(request: web.Request) -> web.Response:
-    return web.json_response({
-        "status": "healthy",
-        "service": "bot",
-        "version": "1.0.0",
-        "checks": {"database": "ok", "redis": "ok"},
-    })
+    return web.json_response(
+        {
+            "status": "healthy",
+            "service": "bot",
+            "version": "1.0.0",
+            "checks": {"database": "ok", "redis": "ok"},
+        }
+    )
 
 
 async def run_polling(bot: Bot, dp: Dispatcher) -> None:
@@ -37,9 +43,16 @@ async def run_polling(bot: Bot, dp: Dispatcher) -> None:
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(
         bot,
-        allowed_updates=["message", "callback_query", "poll_answer", "poll",
-                         "inline_query", "chosen_inline_result", "my_chat_member",
-                         "chat_member"],
+        allowed_updates=[
+            "message",
+            "callback_query",
+            "poll_answer",
+            "poll",
+            "inline_query",
+            "chosen_inline_result",
+            "my_chat_member",
+            "chat_member",
+        ],
     )
 
 
@@ -83,48 +96,52 @@ async def _setup_bot_settings(bot: Bot) -> None:
 
     # ── Private chat commands ──────────────────────────────────────────
     private_uz = [
-        BotCommand(command="start",   description="🏠 Botni boshlash / Menyuga qaytish"),
-        BotCommand(command="quiz",    description="▶️ Quiz o'ynash"),
-        BotCommand(command="create",  description="📤 Quiz yaratish (fayl yuklash)"),
+        BotCommand(command="start", description="🏠 Botni boshlash / Menyuga qaytish"),
+        BotCommand(command="quiz", description="▶️ Quiz o'ynash"),
+        BotCommand(command="create", description="📤 Quiz yaratish (fayl yuklash)"),
         BotCommand(command="profile", description="👤 Profilim va statistika"),
-        BotCommand(command="top",     description="🏆 Reyting jadval"),
-        BotCommand(command="invite",  description="👥 Do'st taklif qilish"),
-        BotCommand(command="stop",    description="⏹ Quizni to'xtatish"),
-        BotCommand(command="help",    description="❓ Yordam"),
+        BotCommand(command="top", description="🏆 Reyting jadval"),
+        BotCommand(command="invite", description="👥 Do'st taklif qilish"),
+        BotCommand(command="stop", description="⏹ Quizni to'xtatish"),
+        BotCommand(command="help", description="❓ Yordam"),
     ]
     private_ru = [
-        BotCommand(command="start",   description="🏠 Запустить бота / Главное меню"),
-        BotCommand(command="quiz",    description="▶️ Играть в квиз"),
-        BotCommand(command="create",  description="📤 Создать квиз (загрузка файла)"),
+        BotCommand(command="start", description="🏠 Запустить бота / Главное меню"),
+        BotCommand(command="quiz", description="▶️ Играть в квиз"),
+        BotCommand(command="create", description="📤 Создать квиз (загрузка файла)"),
         BotCommand(command="profile", description="👤 Мой профиль и статистика"),
-        BotCommand(command="top",     description="🏆 Таблица лидеров"),
-        BotCommand(command="invite",  description="👥 Пригласить друга"),
-        BotCommand(command="stop",    description="⏹ Остановить квиз"),
-        BotCommand(command="help",    description="❓ Помощь"),
+        BotCommand(command="top", description="🏆 Таблица лидеров"),
+        BotCommand(command="invite", description="👥 Пригласить друга"),
+        BotCommand(command="stop", description="⏹ Остановить квиз"),
+        BotCommand(command="help", description="❓ Помощь"),
     ]
     private_en = [
-        BotCommand(command="start",   description="🏠 Start bot / Main menu"),
-        BotCommand(command="quiz",    description="▶️ Play a quiz"),
-        BotCommand(command="create",  description="📤 Create quiz (upload file)"),
+        BotCommand(command="start", description="🏠 Start bot / Main menu"),
+        BotCommand(command="quiz", description="▶️ Play a quiz"),
+        BotCommand(command="create", description="📤 Create quiz (upload file)"),
         BotCommand(command="profile", description="👤 My profile & stats"),
-        BotCommand(command="top",     description="🏆 Leaderboard"),
-        BotCommand(command="invite",  description="👥 Invite a friend"),
-        BotCommand(command="stop",    description="⏹ Stop quiz"),
-        BotCommand(command="help",    description="❓ Help"),
+        BotCommand(command="top", description="🏆 Leaderboard"),
+        BotCommand(command="invite", description="👥 Invite a friend"),
+        BotCommand(command="stop", description="⏹ Stop quiz"),
+        BotCommand(command="help", description="❓ Help"),
     ]
 
     # ── Group chat commands ────────────────────────────────────────────
     group_commands = [
-        BotCommand(command="quiz",     description="▶️ Guruhda quiz boshlash"),
-        BotCommand(command="stop",     description="⏹ Quizni to'xtatish (admin)"),
-        BotCommand(command="top",      description="🏆 Guruh reytingi"),
+        BotCommand(command="quiz", description="▶️ Guruhda quiz boshlash"),
+        BotCommand(command="stop", description="⏹ Quizni to'xtatish (admin)"),
+        BotCommand(command="top", description="🏆 Guruh reytingi"),
         BotCommand(command="settings", description="⚙️ Guruh sozlamalari (admin)"),
     ]
 
     await asyncio.gather(
         bot.set_my_commands(private_uz, scope=BotCommandScopeDefault()),
-        bot.set_my_commands(private_ru, scope=BotCommandScopeDefault(), language_code="ru"),
-        bot.set_my_commands(private_en, scope=BotCommandScopeDefault(), language_code="en"),
+        bot.set_my_commands(
+            private_ru, scope=BotCommandScopeDefault(), language_code="ru"
+        ),
+        bot.set_my_commands(
+            private_en, scope=BotCommandScopeDefault(), language_code="en"
+        ),
         bot.set_my_commands(group_commands, scope=BotCommandScopeAllGroupChats()),
     )
 
@@ -149,8 +166,12 @@ async def _setup_bot_settings(bot: Bot) -> None:
 
     # ── Qisqa tavsif (profil ekranida ko'rinadi) ──────────────────────
     await bot.set_my_short_description("📄 Fayldan AI yordamida quiz yarating")
-    await bot.set_my_short_description("📄 Создайте квиз из файла с помощью ИИ", language_code="ru")
-    await bot.set_my_short_description("📄 Create AI-powered quizzes from your files", language_code="en")
+    await bot.set_my_short_description(
+        "📄 Создайте квиз из файла с помощью ИИ", language_code="ru"
+    )
+    await bot.set_my_short_description(
+        "📄 Create AI-powered quizzes from your files", language_code="en"
+    )
 
     logger.info("Bot settings sozlandi")
 
@@ -160,7 +181,9 @@ async def async_main() -> None:
     dp = Dispatcher()
 
     dp.include_router(router)
-    dp.poll_answer.register(on_poll_answer)  # aiogram 3.7: sub-router poll_answer dp ga o'tmaydi
+    dp.poll_answer.register(
+        on_poll_answer
+    )  # aiogram 3.7: sub-router poll_answer dp ga o'tmaydi
     dp.message.middleware(SubscriptionMiddleware())
 
     try:

@@ -1,16 +1,24 @@
 """Profil, reyting va referal handlerlari."""
+
 import asyncio
 
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import (
-    CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup,
-    LabeledPrice, PreCheckoutQuery,
+    CallbackQuery,
+    Message,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    LabeledPrice,
+    PreCheckoutQuery,
 )
 
 from keyboards.inline import (
-    profile_keyboard, leaderboard_tabs_keyboard,
-    referral_keyboard, premium_plans_keyboard, payment_keyboard,
+    profile_keyboard,
+    leaderboard_tabs_keyboard,
+    referral_keyboard,
+    premium_plans_keyboard,
+    payment_keyboard,
 )
 from utils.api import game_client, subscription_client
 from utils.i18n import t
@@ -37,6 +45,7 @@ LEVEL_NAMES_UZ = {
 
 
 # ─────────────────────────── Profil ───────────────────────────
+
 
 @router.message(Command("profile"))
 @router.message(F.text.in_({"👤 Profil", "👤 Profile", "👤 Профиль"}))
@@ -74,7 +83,11 @@ async def show_profile(event, state=None) -> None:
     total_wrong = stats.get("total_wrong", 0)
     total_q = total_correct + total_wrong
 
-    plan_text = "💎 Premium" if plan == "premium" else ("🏢 Business" if plan == "business" else "🆓 Free")
+    plan_text = (
+        "💎 Premium"
+        if plan == "premium"
+        else ("🏢 Business" if plan == "business" else "🆓 Free")
+    )
     if expires_at:
         plan_text += f" (→ {expires_at[:10]})"
 
@@ -122,14 +135,17 @@ async def show_detail_stats(cb: CallbackQuery) -> None:
 
     await cb.message.edit_text(
         text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◀ Orqaga", callback_data="prof:view")]
-        ]),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀ Orqaga", callback_data="prof:view")]
+            ]
+        ),
     )
     await cb.answer()
 
 
 # ─────────────────────────── Premium ───────────────────────────
+
 
 @router.message(F.text.in_({"💎 Obuna", "💎 Premium"}))
 @router.callback_query(F.data == "prof:premium")
@@ -141,6 +157,7 @@ async def show_premium(event) -> None:
             from db import AsyncSessionLocal
             from db.models import User
             from sqlalchemy import select
+
             async with AsyncSessionLocal() as session:
                 result = await session.execute(
                     select(User).where(User.telegram_id == event.from_user.id)
@@ -169,6 +186,7 @@ async def show_payment_options(cb: CallbackQuery) -> None:
         from db import AsyncSessionLocal
         from db.models import User
         from sqlalchemy import select
+
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(User).where(User.telegram_id == cb.from_user.id)
@@ -197,8 +215,8 @@ async def show_payment_options(cb: CallbackQuery) -> None:
 
 # Telegram Stars narxlari (1 USD ≈ 50 Stars)
 _STARS_PRICES = {
-    "monthly": 150,   # ~3 USD
-    "yearly": 1200,   # ~24 USD
+    "monthly": 150,  # ~3 USD
+    "yearly": 1200,  # ~24 USD
 }
 _PLAN_DAYS = {
     "monthly": 30,
@@ -246,6 +264,7 @@ async def payment_successful(message: Message) -> None:
 
         try:
             from utils.api import subscription_client
+
             await subscription_client().activate_premium(
                 user_id=message.from_user.id,
                 days=days,
@@ -260,6 +279,7 @@ async def payment_successful(message: Message) -> None:
         from db import AsyncSessionLocal
         from db.models import User as _User
         from sqlalchemy import select as _select
+
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 _select(_User).where(_User.telegram_id == message.from_user.id)
@@ -270,8 +290,10 @@ async def payment_successful(message: Message) -> None:
     except Exception:
         pass
 
-    period_labels = {"monthly": {"uz": "oylik", "ru": "ежемесячный", "en": "monthly"},
-                     "yearly": {"uz": "yillik", "ru": "годовой", "en": "yearly"}}
+    period_labels = {
+        "monthly": {"uz": "oylik", "ru": "ежемесячный", "en": "monthly"},
+        "yearly": {"uz": "yillik", "ru": "годовой", "en": "yearly"},
+    }
     period_label = period_labels.get(period, {}).get(lang, period)
     await message.answer(t("payment_success", lang, period=period_label))
 
@@ -283,6 +305,7 @@ async def close_payment(cb: CallbackQuery) -> None:
 
 
 # ─────────────────────────── Reyting ───────────────────────────
+
 
 @router.message(Command("top"))
 @router.message(F.text.in_({"🏆 Reyting", "🏆 Rating", "🏆 Рейтинг"}))
@@ -297,17 +320,33 @@ async def leaderboard_tab(cb: CallbackQuery) -> None:
     await cb.answer()
 
 
-async def _send_leaderboard(message: Message, period: str, edit: bool = False, caller_id: int | None = None) -> None:
-    api_period = {"today": "daily", "week": "weekly", "month": "monthly", "all": "alltime"}.get(period, "alltime")
-    period_label = {"today": "Bugun", "week": "Hafta", "month": "Oy", "all": "Barchasi"}.get(period, "Barchasi")
+async def _send_leaderboard(
+    message: Message, period: str, edit: bool = False, caller_id: int | None = None
+) -> None:
+    api_period = {
+        "today": "daily",
+        "week": "weekly",
+        "month": "monthly",
+        "all": "alltime",
+    }.get(period, "alltime")
+    period_label = {
+        "today": "Bugun",
+        "week": "Hafta",
+        "month": "Oy",
+        "all": "Barchasi",
+    }.get(period, "Barchasi")
 
     user_tg_id = caller_id or (message.from_user.id if message.from_user else None)
 
     try:
         lb_coro = game_client().get_leaderboard(period=api_period, limit=10)
-        rank_coro = game_client().get_user_rank(user_tg_id, period=api_period) if user_tg_id else None
+        rank_coro = (
+            game_client().get_user_rank(user_tg_id, period=api_period)
+            if user_tg_id
+            else None
+        )
         if rank_coro:
-            (lb_data, rank_data) = await asyncio.gather(lb_coro, rank_coro)
+            lb_data, rank_data = await asyncio.gather(lb_coro, rank_coro)
         else:
             lb_data = await lb_coro
             rank_data = None
@@ -322,7 +361,11 @@ async def _send_leaderboard(message: Message, period: str, edit: bool = False, c
         lines = [f"🏆 <b>Reyting — {period_label}</b>\n"]
         for i, e in enumerate(entries[:10]):
             medal = medals[i] if i < 3 else f"  {i + 1}."
-            name = e.get("username") or e.get("first_name") or f"User {e.get('user_id', '')}"
+            name = (
+                e.get("username")
+                or e.get("first_name")
+                or f"User {e.get('user_id', '')}"
+            )
             score = e.get("total_score", e.get("score", 0))
             xp = e.get("xp")
             xp_str = f"  ·  {xp} XP" if xp else ""
@@ -339,7 +382,9 @@ async def _send_leaderboard(message: Message, period: str, edit: bool = False, c
 
     try:
         if edit:
-            await message.edit_text(text, reply_markup=leaderboard_tabs_keyboard(period))
+            await message.edit_text(
+                text, reply_markup=leaderboard_tabs_keyboard(period)
+            )
         else:
             await message.answer(text, reply_markup=leaderboard_tabs_keyboard(period))
     except Exception:
@@ -347,6 +392,7 @@ async def _send_leaderboard(message: Message, period: str, edit: bool = False, c
 
 
 # ─────────────────────────── Referal ───────────────────────────
+
 
 @router.message(Command("invite"))
 @router.message(F.text.in_({"👥 Taklif qilish", "👥 Пригласить", "👥 Invite"}))
@@ -361,8 +407,11 @@ async def show_referral(message: Message) -> None:
         from db import AsyncSessionLocal
         from db.models import User
         from sqlalchemy import select
+
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
             user = result.scalar_one_or_none()
             if user:
                 lang = user.language_code or "uz"
@@ -394,8 +443,11 @@ async def referral_via_callback(cb: CallbackQuery) -> None:
         from db import AsyncSessionLocal
         from db.models import User
         from sqlalchemy import select
+
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
             user = result.scalar_one_or_none()
             if user:
                 lang = user.language_code or "uz"
@@ -406,5 +458,7 @@ async def referral_via_callback(cb: CallbackQuery) -> None:
         t("referral_description", lang)
         + f"\n<code>https://t.me/{bot_info.username}?start=ref_{user_id}</code>"
     )
-    await cb.message.edit_text(text, reply_markup=referral_keyboard(bot_info.username, user_id))
+    await cb.message.edit_text(
+        text, reply_markup=referral_keyboard(bot_info.username, user_id)
+    )
     await cb.answer()

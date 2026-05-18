@@ -5,6 +5,7 @@ Parent conftest.py (tests/conftest.py) utils.api ni mock qiladi.
 Integration testlar real utils.api modulini talab qiladi —
 shu sababli bu yerda mock ni sys.modules dan o'chiramiz.
 """
+
 import sys
 
 

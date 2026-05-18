@@ -1,4 +1,5 @@
 """Stage 2: Excel (.xlsx) parser"""
+
 import io
 import logging
 import re
@@ -14,8 +15,15 @@ _OPTION_C_ALIASES = ["c", "variant_c", "c)", "option_c", "choice_c"]
 _OPTION_D_ALIASES = ["d", "variant_d", "d)", "option_d", "choice_d"]
 _OPTION_E_ALIASES = ["e", "variant_e", "e)", "option_e", "choice_e"]
 _ANSWER_ALIASES = [
-    "answer", "javob", "ответ", "correct", "correct_answer",
-    "to'g'ri", "togri", "right", "key",
+    "answer",
+    "javob",
+    "ответ",
+    "correct",
+    "correct_answer",
+    "to'g'ri",
+    "togri",
+    "right",
+    "key",
 ]
 _EXPLANATION_ALIASES = ["explanation", "tushuntirish", "объяснение", "izoh", "note"]
 
@@ -81,7 +89,7 @@ def parse_excel(file_content: bytes) -> List[Dict[str, Any]]:
         # If no explicit answer column → try to auto-detect later per row
         questions: List[Dict[str, Any]] = []
 
-        for row in rows[header_row_idx + 1:]:
+        for row in rows[header_row_idx + 1 :]:
             if not row:
                 continue
 
@@ -98,14 +106,18 @@ def parse_excel(file_content: bytes) -> List[Dict[str, Any]]:
 
             # Need at least 2 options
             if len(options) < 2:
-                logger.debug("Excel: '%s' — 2 ta variant kerak, o'tkazib yuborildi", q_val)
+                logger.debug(
+                    "Excel: '%s' — 2 ta variant kerak, o'tkazib yuborildi", q_val
+                )
                 continue
 
             # Determine correct answer
             answer_raw = _cell_val(row, answer_col) if answer_col is not None else ""
             correct_index = _resolve_correct_index(answer_raw, options)
 
-            explanation = _cell_val(row, explanation_col) if explanation_col is not None else ""
+            explanation = (
+                _cell_val(row, explanation_col) if explanation_col is not None else ""
+            )
 
             questions.append(
                 {
@@ -125,6 +137,7 @@ def parse_excel(file_content: bytes) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _unmerge_cells(ws) -> None:
     """Fills merged cell ranges with the top-left cell value before reading."""

@@ -1,4 +1,5 @@
 """Stage 2: Image (.png/.jpg) parser — GPT-4o Vision API"""
+
 import asyncio
 import base64
 import io
@@ -126,7 +127,9 @@ async def _call_vision(image_bytes: bytes, openai_client) -> str:
         raise
 
 
-async def parse_images_batch(images: List[bytes], openai_client, max_concurrent: int = 3) -> str:
+async def parse_images_batch(
+    images: List[bytes], openai_client, max_concurrent: int = 3
+) -> str:
     """
     Processes multiple images in parallel (max_concurrent bir vaqtda).
     Each image triggers one API call; results are combined in order.

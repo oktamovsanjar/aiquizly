@@ -1,5 +1,3 @@
-import uuid as uuid_mod
-
 from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
@@ -15,9 +13,9 @@ from utils.i18n import t
 
 router = Router()
 
-REFERRAL_XP_REFERRER = 50      # taklif qilganga
-REFERRAL_XP_REFERRED = 20      # yangi foydalanuvchiga
-REFERRAL_PREMIUM_DAYS = 3      # taklif qilganga premium kunlar
+REFERRAL_XP_REFERRER = 50  # taklif qilganga
+REFERRAL_XP_REFERRED = 20  # yangi foydalanuvchiga
+REFERRAL_PREMIUM_DAYS = 3  # taklif qilganga premium kunlar
 
 
 async def _upsert_user(message: Message) -> tuple[User, bool]:
@@ -52,7 +50,9 @@ async def _upsert_user(message: Message) -> tuple[User, bool]:
         return user, is_new
 
 
-async def _process_referral(referred_user: User, referrer_telegram_id: int) -> str | None:
+async def _process_referral(
+    referred_user: User, referrer_telegram_id: int
+) -> str | None:
     """
     Referral bonus berish:
     - Referrer: +50 XP + 3 kun premium (subscription servis orqali)
@@ -100,6 +100,7 @@ async def _process_referral(referred_user: User, referrer_telegram_id: int) -> s
     # Subscription servisga bonus so'rovi
     try:
         from utils.api import subscription_client
+
         await subscription_client().activate_premium(
             user_id=referrer.telegram_id,
             days=REFERRAL_PREMIUM_DAYS,
@@ -111,8 +112,13 @@ async def _process_referral(referred_user: User, referrer_telegram_id: int) -> s
     # XP berish (game servis orqali)
     try:
         from utils.api import game_client
-        await game_client().award_xp(referrer.telegram_id, REFERRAL_XP_REFERRER, "referral")
-        await game_client().award_xp(referred_user.telegram_id, REFERRAL_XP_REFERRED, "referral_join")
+
+        await game_client().award_xp(
+            referrer.telegram_id, REFERRAL_XP_REFERRER, "referral"
+        )
+        await game_client().award_xp(
+            referred_user.telegram_id, REFERRAL_XP_REFERRED, "referral_join"
+        )
     except Exception:
         pass
 
@@ -154,10 +160,16 @@ async def cmd_start_referral(message: Message) -> None:
     user, is_new = await _upsert_user(message)
     if is_new:
         import asyncio
-        asyncio.create_task(notify_new_user(
-            message.bot, user.telegram_id, user.username, user.first_name,
-            params=[f"ref_{referrer_tg_id}"],
-        ))
+
+        asyncio.create_task(
+            notify_new_user(
+                message.bot,
+                user.telegram_id,
+                user.username,
+                user.first_name,
+                params=[f"ref_{referrer_tg_id}"],
+            )
+        )
     referrer_name = await _process_referral(user, referrer_tg_id)
 
     bonus_text = ""
@@ -165,7 +177,9 @@ async def cmd_start_referral(message: Message) -> None:
     if lang not in ("uz", "ru", "en"):
         lang = "uz"
     if referrer_name:
-        bonus_text = t("referral_bonus", lang, name=referrer_name, xp=REFERRAL_XP_REFERRED)
+        bonus_text = t(
+            "referral_bonus", lang, name=referrer_name, xp=REFERRAL_XP_REFERRED
+        )
 
     await message.answer(
         t("welcome_new", lang) + bonus_text,
@@ -179,9 +193,15 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     user, is_new = await _upsert_user(message)
     if is_new:
         import asyncio
-        asyncio.create_task(notify_new_user(
-            message.bot, user.telegram_id, user.username, user.first_name,
-        ))
+
+        asyncio.create_task(
+            notify_new_user(
+                message.bot,
+                user.telegram_id,
+                user.username,
+                user.first_name,
+            )
+        )
 
     # Foydalanuvchi allaqachon ro'yxatdan o'tgan bo'lsa — menyu ko'rsat
     if _is_returning_user(user):
@@ -203,7 +223,9 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     )
 
 
-async def _open_quiz_by_id(message: Message, state: FSMContext, quiz_id: str, lang: str) -> None:
+async def _open_quiz_by_id(
+    message: Message, state: FSMContext, quiz_id: str, lang: str
+) -> None:
     from fsm.states import QuizStates
     from utils.api import ai_engine_client
     from keyboards.inline import set_select_keyboard
@@ -217,7 +239,9 @@ async def _open_quiz_by_id(message: Message, state: FSMContext, quiz_id: str, la
         return
 
     await state.set_state(QuizStates.BROWSING_MY_QUIZZES)
-    await state.update_data(language_code=lang, selected_quiz_id=quiz_id, selected_quiz_title=title)
+    await state.update_data(
+        language_code=lang, selected_quiz_id=quiz_id, selected_quiz_title=title
+    )
     await message.answer(
         f"📋 <b>{title}</b>\n\nSet tanlang:",
         reply_markup=set_select_keyboard(sets, quiz_id),
@@ -259,7 +283,9 @@ async def choose_language(message: Message, state: FSMContext) -> None:
     pending_quiz_id = data.get("pending_quiz_id")
     if pending_quiz_id:
         await state.update_data(pending_quiz_id=None)
-        await message.answer(t("language_saved", lang), reply_markup=main_menu_keyboard(lang))
+        await message.answer(
+            t("language_saved", lang), reply_markup=main_menu_keyboard(lang)
+        )
         await _open_quiz_by_id(message, state, pending_quiz_id, lang)
         return
 

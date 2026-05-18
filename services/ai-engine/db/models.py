@@ -1,10 +1,10 @@
 """SQLAlchemy 2.0 async models — ai-engine owned tables"""
+
 import uuid
 from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     DECIMAL,
     ForeignKey,
@@ -45,11 +45,13 @@ class Quiz(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
+        UUID(as_uuid=True),
+        nullable=False,
         # FK users.id — DB darajasida, ORM da emas (cross-service table)
     )
     quiz_group_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        nullable=True,
         # FK quiz_groups.id — DB darajasida, ORM da emas (cross-service)
     )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
@@ -59,10 +61,16 @@ class Quiz(Base):
     )
     source_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     total_questions: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    time_per_question: Mapped[int] = mapped_column(Integer, default=30, server_default="30")
+    time_per_question: Mapped[int] = mapped_column(
+        Integer, default=30, server_default="30"
+    )
     play_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    avg_rating: Mapped[float] = mapped_column(DECIMAL(3, 2), default=0, server_default="0")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    avg_rating: Mapped[float] = mapped_column(
+        DECIMAL(3, 2), default=0, server_default="0"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
     expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=datetime.utcnow, server_default=text("now()")
@@ -88,7 +96,9 @@ class QuizTag(Base):
     __tablename__ = "quiz_tags"
 
     quiz_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("quizzes.id", ondelete="CASCADE"), primary_key=True
+        UUID(as_uuid=True),
+        ForeignKey("quizzes.id", ondelete="CASCADE"),
+        primary_key=True,
     )
     tag_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
@@ -151,7 +161,8 @@ class ImportLog(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        nullable=True,
         # FK users.id — DB darajasida, ORM da emas (cross-service table)
     )
     quiz_id: Mapped[Optional[uuid.UUID]] = mapped_column(

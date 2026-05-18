@@ -4,6 +4,7 @@ Integration testlar — bot utils/api.py klientlari.
 Har bir klient uchun `client._http` ni to'g'ridan-to'g'ri mock qilamiz —
 shunday qilib real HTTP so'rovlari yuborilmaydi.
 """
+
 import sys
 import os
 
@@ -26,6 +27,7 @@ def _make_resp(json_data: dict, status: int = 200) -> MagicMock:
 
 # ── AIEngineClient ─────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_ai_engine_process_file_calls_correct_endpoint():
     """/process endpoint ga POST qilinishi."""
@@ -33,7 +35,9 @@ async def test_ai_engine_process_file_calls_correct_endpoint():
 
     client = AIEngineClient(base_url="http://ai-engine:8002")
     client._http = MagicMock()
-    client._http.post = AsyncMock(return_value=_make_resp({"task_id": "abc123", "status": "processing"}))
+    client._http.post = AsyncMock(
+        return_value=_make_resp({"task_id": "abc123", "status": "processing"})
+    )
 
     result = await client.process_file(
         file_url="https://example.com/file.docx",
@@ -55,16 +59,16 @@ async def test_ai_engine_get_quizzes_with_pagination():
 
     client = AIEngineClient(base_url="http://ai-engine:8002")
     client._http = MagicMock()
-    client._http.get = AsyncMock(return_value=_make_resp(
-        {"quizzes": [{"id": "quiz1"}], "total": 1}
-    ))
+    client._http.get = AsyncMock(
+        return_value=_make_resp({"quizzes": [{"id": "quiz1"}], "total": 1})
+    )
 
     result = await client.get_quizzes(page=2, page_size=5, public=True)
 
     assert "quizzes" in result
     params = client._http.get.call_args[1]["params"]
     assert params["limit"] == 5
-    assert params["offset"] == 5          # (page-1) * page_size = 1 * 5
+    assert params["offset"] == 5  # (page-1) * page_size = 1 * 5
     assert params["visibility"] == "public"
 
 
@@ -75,7 +79,9 @@ async def test_ai_engine_service_error_raises():
 
     client = AIEngineClient(base_url="http://ai-engine:8002")
     client._http = MagicMock()
-    client._http.post = AsyncMock(return_value=_make_resp({"detail": "Not Found"}, status=404))
+    client._http.post = AsyncMock(
+        return_value=_make_resp({"detail": "Not Found"}, status=404)
+    )
 
     with pytest.raises(ServiceError) as exc_info:
         await client.process_file(
@@ -91,6 +97,7 @@ async def test_ai_engine_service_error_raises():
 
 # ── SubscriptionClient ────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_subscription_check_limit_allowed():
     """check_limit → True qaytarilishi."""
@@ -98,9 +105,11 @@ async def test_subscription_check_limit_allowed():
 
     client = SubscriptionClient(base_url="http://subscription:8003")
     client._http = MagicMock()
-    client._http.get = AsyncMock(return_value=_make_resp(
-        {"allowed": True, "limit": 3, "used": 1, "plan": "free"}
-    ))
+    client._http.get = AsyncMock(
+        return_value=_make_resp(
+            {"allowed": True, "limit": 3, "used": 1, "plan": "free"}
+        )
+    )
 
     result = await client.check_limit(user_id=12345, action="file_upload")
 
@@ -117,9 +126,11 @@ async def test_subscription_check_limit_blocked():
 
     client = SubscriptionClient(base_url="http://subscription:8003")
     client._http = MagicMock()
-    client._http.get = AsyncMock(return_value=_make_resp(
-        {"allowed": False, "limit": 3, "used": 3, "plan": "free"}
-    ))
+    client._http.get = AsyncMock(
+        return_value=_make_resp(
+            {"allowed": False, "limit": 3, "used": 3, "plan": "free"}
+        )
+    )
 
     result = await client.check_limit(user_id=12345, action="file_upload")
 
@@ -156,6 +167,7 @@ async def test_subscription_fail_open_on_422():
 
 # ── GameClient ────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_game_client_start_game():
     """start_game POST /games ga to'g'ri body yuborishi."""
@@ -163,9 +175,9 @@ async def test_game_client_start_game():
 
     client = GameClient(base_url="http://game:8081")
     client._http = MagicMock()
-    client._http.post = AsyncMock(return_value=_make_resp(
-        {"game_id": "game-uuid-123", "status": "active"}
-    ))
+    client._http.post = AsyncMock(
+        return_value=_make_resp({"game_id": "game-uuid-123", "status": "active"})
+    )
 
     result = await client.start_game(
         user_id=12345,
@@ -189,9 +201,9 @@ async def test_game_client_award_xp():
 
     client = GameClient(base_url="http://game:8081")
     client._http = MagicMock()
-    client._http.post = AsyncMock(return_value=_make_resp(
-        {"total_xp": 150, "awarded": 50}
-    ))
+    client._http.post = AsyncMock(
+        return_value=_make_resp({"total_xp": 150, "awarded": 50})
+    )
 
     result = await client.award_xp(user_id=12345, xp=50, reason="referral")
 

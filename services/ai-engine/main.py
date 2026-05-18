@@ -13,9 +13,12 @@ from tasks.process_file import process_file_task
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
+
 # --- DB setup ---
 def _async_url(url: str) -> str:
-    url = url.replace("postgresql+asyncpg://", "postgresql+asyncpg://")  # no-op if already correct
+    url = url.replace(
+        "postgresql+asyncpg://", "postgresql+asyncpg://"
+    )  # no-op if already correct
     url = url.replace("postgresql://", "postgresql+asyncpg://")
     url = url.replace("postgres://", "postgresql+asyncpg://")
     return url
@@ -99,6 +102,7 @@ async def process_file(req: ProcessRequest):
     # Dublikat tekshirish
     async with AsyncSessionLocal() as session:
         from db.queries import check_file_hash
+
         existing = await check_file_hash(session, file_hash)
         if existing:
             return {
@@ -110,6 +114,7 @@ async def process_file(req: ProcessRequest):
         # user_id ni telegram_id dan UUID ga resolve qilish
         import uuid as _uuid
         import sqlalchemy as _sa
+
         resolved_user_id = req.user_id
         # Agar telegram_id raqam bo'lsa (UUID emas) — users jadvalidan UUID topamiz
         try:
@@ -132,6 +137,7 @@ async def process_file(req: ProcessRequest):
         # Import log yaratish
         from db.queries import create_import_log
         import os
+
         file_ext = os.path.splitext(req.file_name)[1].lstrip(".")
         import_log = await create_import_log(
             session=session,
@@ -186,10 +192,12 @@ async def list_quizzes(
     """Quiz qidirish va ro'yxat olish"""
     async with AsyncSessionLocal() as session:
         from db.queries import get_user_quizzes, search_quizzes
+
         if user_id:
             # telegram_id → UUID resolve
             import uuid as _uuid
             import sqlalchemy as _sa
+
             resolved_uid = user_id
             try:
                 _uuid.UUID(user_id)
@@ -208,8 +216,12 @@ async def list_quizzes(
             quizzes = await get_user_quizzes(session, resolved_uid)
         else:
             quizzes = await search_quizzes(
-                session, query=q, tag_slug=tag,
-                visibility=visibility, limit=limit, offset=offset,
+                session,
+                query=q,
+                tag_slug=tag,
+                visibility=visibility,
+                limit=limit,
+                offset=offset,
             )
         return {
             "quizzes": [
@@ -219,7 +231,9 @@ async def list_quizzes(
                     "total_questions": quiz.total_questions,
                     "play_count": quiz.play_count,
                     "visibility": quiz.visibility,
-                    "created_at": quiz.created_at.isoformat() if quiz.created_at else None,
+                    "created_at": (
+                        quiz.created_at.isoformat() if quiz.created_at else None
+                    ),
                 }
                 for quiz in quizzes
             ]
@@ -231,6 +245,7 @@ async def get_quiz(quiz_id: str):
     """Quiz ma'lumotlarini olish"""
     async with AsyncSessionLocal() as session:
         from db.queries import get_quiz as _get_quiz
+
         quiz = await _get_quiz(session, quiz_id)
         if not quiz:
             raise HTTPException(status_code=404, detail="Quiz topilmadi")
@@ -257,6 +272,7 @@ async def get_quiz_questions(
     """Quiz savollarini olish (paginatsiya bilan)"""
     async with AsyncSessionLocal() as session:
         from db.queries import get_quiz_questions as _get_questions
+
         questions = await _get_questions(session, quiz_id, offset=offset, limit=limit)
         return {
             "quiz_id": quiz_id,
@@ -286,7 +302,10 @@ async def get_quiz_set_questions(
     offset = (set_number - 1) * set_size
     async with AsyncSessionLocal() as session:
         from db.queries import get_quiz_questions as _get_questions
-        questions = await _get_questions(session, quiz_id, offset=offset, limit=set_size)
+
+        questions = await _get_questions(
+            session, quiz_id, offset=offset, limit=set_size
+        )
         return [
             {
                 "id": str(q.id),
@@ -304,6 +323,7 @@ async def get_quiz_set_questions(
 async def get_questions_count(quiz_id: str):
     async with AsyncSessionLocal() as session:
         from db.queries import count_questions
+
         total = await count_questions(session, quiz_id)
         return {"quiz_id": quiz_id, "total": total}
 
@@ -320,8 +340,10 @@ async def update_question(quiz_id: str, question_id: str, body: QuestionUpdate):
     """Savolni tahrirlash — matn, variantlar, to'g'ri javob yoki izoh."""
     async with AsyncSessionLocal() as session:
         from db.queries import update_question as _update_q
+
         found = await _update_q(
-            session, question_id,
+            session,
+            question_id,
             question_text=body.question_text,
             options=body.options,
             correct_indices=body.correct_indices,
@@ -342,6 +364,7 @@ async def update_quiz(quiz_id: str, body: QuizUpdate):
     """Quiz nomini yoki visibility sini yangilash."""
     async with AsyncSessionLocal() as session:
         from db.queries import update_quiz as _update_quiz
+
         quiz = await _update_quiz(
             session,
             quiz_id,
@@ -358,6 +381,7 @@ async def delete_quiz(quiz_id: str):
     """Quizni soft-delete qilish."""
     async with AsyncSessionLocal() as session:
         from db.queries import delete_quiz as _delete_quiz
+
         found = await _delete_quiz(session, quiz_id)
         if not found:
             raise HTTPException(status_code=404, detail="Quiz topilmadi")
@@ -369,6 +393,7 @@ async def delete_question(quiz_id: str, question_id: str):
     """Savolni o'chirish va quiz.total_questions ni yangilash."""
     async with AsyncSessionLocal() as session:
         from db.queries import delete_question as _delete_q
+
         found = await _delete_q(session, question_id, quiz_id)
         if not found:
             raise HTTPException(status_code=404, detail="Savol topilmadi")
@@ -380,10 +405,16 @@ async def get_trending_tags(limit: int = Query(10, le=50)):
     """Trend teglarni olish"""
     async with AsyncSessionLocal() as session:
         from db.queries import get_trending_tags
+
         tags = await get_trending_tags(session, limit=limit)
         return {
             "tags": [
-                {"id": str(t.id), "name": t.name, "slug": t.slug, "usage_count": t.usage_count}
+                {
+                    "id": str(t.id),
+                    "name": t.name,
+                    "slug": t.slug,
+                    "usage_count": t.usage_count,
+                }
                 for t in tags
             ]
         }
@@ -391,4 +422,5 @@ async def get_trending_tags(limit: int = Query(10, le=50)):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=settings.ai_engine_port)

@@ -10,65 +10,77 @@ Har bir stage alohida test qilinadi:
 
 QA.md §5 ga asoslanadi.
 """
+
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 # ── Stage 1: Format Detection ─────────────────────────────────────────────────
+
 
 def test_format_detect_docx():
     from parsers.detector import detect_format
+
     assert detect_format("biology.docx") == "word"
 
 
 def test_format_detect_pdf():
     from parsers.detector import detect_format
+
     assert detect_format("test.pdf") == "pdf"
 
 
 def test_format_detect_xlsx():
     from parsers.detector import detect_format
+
     assert detect_format("questions.xlsx") == "excel"
 
 
 def test_format_detect_txt():
     from parsers.detector import detect_format
+
     assert detect_format("savollar.txt") == "text"
 
 
 def test_format_detect_png():
     from parsers.detector import detect_format
+
     assert detect_format("screenshot.png") == "image"
 
 
 def test_format_detect_jpg():
     from parsers.detector import detect_format
+
     assert detect_format("photo.jpg") == "image"
 
 
 def test_format_detect_unknown_raises():
     from parsers.detector import detect_format
+
     with pytest.raises(ValueError):
         detect_format("file.xyz")
 
 
 # ── Stage 3: Text Chunking ────────────────────────────────────────────────────
 
+
 def _import_chunk_text():
     """celery va config ni mock qilib _chunk_text ni yuklaydi."""
     import sys
     from unittest.mock import MagicMock
+
     sys.modules.setdefault("celery", MagicMock())
     sys.modules.setdefault("config", MagicMock())
     # Avval yuklangan bo'lsa qayta yuklamaslik
     if "tasks.process_file" in sys.modules:
         del sys.modules["tasks.process_file"]
     from tasks.process_file import _chunk_text
+
     return _chunk_text
 
 
@@ -111,6 +123,7 @@ def test_chunk_text_overlap():
 
 # ── Stage 4: AI Structuring (mock API) ───────────────────────────────────────
 
+
 def _make_settings_mock():
     m = MagicMock()
     m.ai_batch_size = 5
@@ -148,9 +161,19 @@ async def test_structurer_parses_valid_response():
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
 
-        with patch.object(structurer.client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
+        with patch.object(
+            structurer.client.chat.completions, "create", new_callable=AsyncMock
+        ) as mock_create:
             mock_create.return_value = mock_completion
-            blocks = [type("Block", (), {"raw_text": "O'zbekistonning poytaxti?\nA) Samarqand\nB) Toshkent"})()]
+            blocks = [
+                type(
+                    "Block",
+                    (),
+                    {
+                        "raw_text": "O'zbekistonning poytaxti?\nA) Samarqand\nB) Toshkent"
+                    },
+                )()
+            ]
             questions, _ = await structurer.structure_blocks(blocks)
 
     assert len(questions) == 1
@@ -175,16 +198,22 @@ async def test_structurer_retries_on_invalid_json():
         if call_count == 1:
             mock_choice.message.content = "bu JSON emas!!!"
         else:
-            mock_choice.message.content = json.dumps({
-                "questions": [{"question": "Q?", "options": ["A", "B"], "correct_index": 0}]
-            })
+            mock_choice.message.content = json.dumps(
+                {
+                    "questions": [
+                        {"question": "Q?", "options": ["A", "B"], "correct_index": 0}
+                    ]
+                }
+            )
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
         return mock_completion
 
     with patch("ai.structurer.settings", _make_settings_mock()):
         structurer = AIStructurer()
-        with patch.object(structurer.client.chat.completions, "create", new_callable=AsyncMock) as mock_api:
+        with patch.object(
+            structurer.client.chat.completions, "create", new_callable=AsyncMock
+        ) as mock_api:
             mock_api.side_effect = mock_create
             blocks = [type("Block", (), {"raw_text": "Q?\nA) A\nB) B"})()]
             await structurer.structure_blocks(blocks)
@@ -210,6 +239,7 @@ async def test_structurer_empty_blocks():
 
 # ── Stage 5: Validation ───────────────────────────────────────────────────────
 
+
 def test_validator_valid_questions():
     """To'g'ri savollar → hamma o'tadi (list qaytaradi)."""
     from ai.validator import validate_questions
@@ -230,7 +260,7 @@ def test_validator_valid_questions():
     result, stats = validate_questions(questions)
     assert isinstance(result, list)
     assert len(result) == 2
-    assert stats["few_options"] == 1   # "Savol 2?" 2 ta variant — standart 4 dan kam
+    assert stats["few_options"] == 1  # "Savol 2?" 2 ta variant — standart 4 dan kam
 
 
 def test_validator_out_of_range_index():
@@ -267,7 +297,11 @@ def test_validator_mixed():
 
     questions = [
         {"question": "To'g'ri?", "options": ["A", "B"], "correct_index": 0},
-        {"question": "Bir variant", "options": ["A"], "correct_index": 0},   # 1 ta variant → skip
+        {
+            "question": "Bir variant",
+            "options": ["A"],
+            "correct_index": 0,
+        },  # 1 ta variant → skip
         {"question": "Yana to'g'ri?", "options": ["X", "Y", "Z"], "correct_index": 2},
     ]
     result, stats = validate_questions(questions)

@@ -1,4 +1,5 @@
 """Admin notification utility — barcha xizmat xabarlari uchun."""
+
 from __future__ import annotations
 
 import logging
@@ -32,8 +33,13 @@ async def notify_bot_started(bot: Bot, mode: str = "polling") -> None:
     await notify_admin(bot, text)
 
 
-async def notify_new_user(bot: Bot, user_id: int, username: str | None,
-                          first_name: str | None, params: list[str] | None = None) -> None:
+async def notify_new_user(
+    bot: Bot,
+    user_id: int,
+    username: str | None,
+    first_name: str | None,
+    params: list[str] | None = None,
+) -> None:
     uname = f"@{username}" if username else "—"
     name = first_name or "—"
     param_str = str(params) if params else "[]"

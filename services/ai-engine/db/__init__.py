@@ -1,4 +1,5 @@
 """DB engine setup — SQLAlchemy 2.0 async with asyncpg"""
+
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (

@@ -5,9 +5,9 @@ BOT_UX.md §6:
   §6.1 — Fayl yuklash (.docx/.pdf/.xlsx/.txt)
   §6.3 — Rasm yuborish
 """
+
 import asyncio
 import logging
-import os
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
@@ -18,12 +18,10 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
-    PhotoSize,
 )
 
 from fsm.states import QuizStates
 from keyboards.inline import quiz_done_with_review_keyboard
-from keyboards.main_menu import main_menu_keyboard
 from utils.api import ai_engine_client
 from utils.i18n import t
 
@@ -37,14 +35,16 @@ ALLOWED_MIME_TYPES = {
     "text/plain",
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-POLL_INTERVAL = 4       # sekund
-POLL_TIMEOUT  = 300     # 5 daqiqa
+POLL_INTERVAL = 4  # sekund
+POLL_TIMEOUT = 300  # 5 daqiqa
 
 
 def _create_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📄 Fayl yuklash", callback_data="up:file")],
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📄 Fayl yuklash", callback_data="up:file")],
+        ]
+    )
 
 
 def _done_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
@@ -59,7 +59,7 @@ async def _get_lang(state: FSMContext) -> str:
 # ─────────────────────── Polling background task ───────────────────────
 
 _SPINNER = ["⏳", "⌛️"]
-_STATUS_UPDATE_EVERY = 3   # har 3 siklda (12 sek) xabar yangilanadi
+_STATUS_UPDATE_EVERY = 3  # har 3 siklda (12 sek) xabar yangilanadi
 
 
 async def _poll_until_done(
@@ -102,17 +102,25 @@ async def _poll_until_done(
                         reply_markup=_create_keyboard(),
                     )
                 except Exception:
-                    await bot.send_message(chat_id, "⚠️ Faylda savol topilmadi. Boshqa fayl yuboring.")
+                    await bot.send_message(
+                        chat_id, "⚠️ Faylda savol topilmadi. Boshqa fayl yuboring."
+                    )
                 return
 
             warnings = result.get("warnings", {})
             warn_lines = []
             if warnings.get("skipped_no_options", 0):
-                warn_lines.append(f"⛔️ {warnings['skipped_no_options']} ta savol o'tkazib yuborildi (variant topilmadi)")
+                warn_lines.append(
+                    f"⛔️ {warnings['skipped_no_options']} ta savol o'tkazib yuborildi (variant topilmadi)"
+                )
             if warnings.get("few_options", 0):
-                warn_lines.append(f"⚠️ {warnings['few_options']} ta savolda 4 dan kam variant")
+                warn_lines.append(
+                    f"⚠️ {warnings['few_options']} ta savolda 4 dan kam variant"
+                )
             if warnings.get("many_options", 0):
-                warn_lines.append(f"⚠️ {warnings['many_options']} ta savolda 4 dan ko'p variant")
+                warn_lines.append(
+                    f"⚠️ {warnings['many_options']} ta savolda 4 dan ko'p variant"
+                )
 
             labels = {
                 "uz": f"✅ Quiz tayyor!\n📄 <b>{file_name}</b>\n📊 {total_q} ta savol topildi.",
@@ -177,12 +185,15 @@ async def _poll_until_done(
 
 # ─────────────────────── Quiz yaratish menyu ───────────────────────
 
+
 @router.message(F.text.in_({"📤 Quiz Yaratish", "📤 Создать квиз", "📤 Create Quiz"}))
 @router.message(Command("create"))
 async def quiz_create_menu(message: Message, state: FSMContext) -> None:
     lang = await _get_lang(state)
     await state.set_state(QuizStates.FILE_UPLOAD)
-    await message.answer(t("upload_select_method", lang), reply_markup=_create_keyboard())
+    await message.answer(
+        t("upload_select_method", lang), reply_markup=_create_keyboard()
+    )
 
 
 @router.callback_query(F.data == "up:file")
@@ -202,6 +213,7 @@ async def cb_image_upload(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─────────────────────── Fayl handler ───────────────────────
+
 
 @router.message(F.document)
 async def handle_document(message: Message, state: FSMContext) -> None:
@@ -253,15 +265,17 @@ async def handle_document(message: Message, state: FSMContext) -> None:
         await state.clear()
 
         # Background polling — state endi kerak emas
-        asyncio.create_task(_poll_until_done(
-            bot=message.bot,
-            chat_id=message.chat.id,
-            user_id=message.from_user.id,
-            task_id=task_id,
-            file_name=doc.file_name,
-            lang=lang,
-            progress_msg_id=progress_msg.message_id,
-        ))
+        asyncio.create_task(
+            _poll_until_done(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                user_id=message.from_user.id,
+                task_id=task_id,
+                file_name=doc.file_name,
+                lang=lang,
+                progress_msg_id=progress_msg.message_id,
+            )
+        )
 
     except Exception as e:
         logger.error("Fayl yuklash xatosi: %s", e)
@@ -270,6 +284,7 @@ async def handle_document(message: Message, state: FSMContext) -> None:
 
 
 # ─────────────────────── Rasm handler ───────────────────────
+
 
 @router.message(QuizStates.IMAGE_UPLOAD, F.photo)
 async def handle_photo(message: Message, state: FSMContext) -> None:
@@ -314,14 +329,16 @@ async def cb_images_done(callback: CallbackQuery, state: FSMContext) -> None:
         )
         await state.clear()
 
-        asyncio.create_task(_poll_until_done(
-            bot=callback.bot,
-            chat_id=callback.message.chat.id,
-            user_id=callback.from_user.id,
-            task_id=task_id,
-            file_name="rasmlar",
-            lang=lang,
-        ))
+        asyncio.create_task(
+            _poll_until_done(
+                bot=callback.bot,
+                chat_id=callback.message.chat.id,
+                user_id=callback.from_user.id,
+                task_id=task_id,
+                file_name="rasmlar",
+                lang=lang,
+            )
+        )
 
     except Exception as e:
         logger.error("Rasm yuklash xatosi: %s", e)
@@ -330,6 +347,7 @@ async def cb_images_done(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─────────────────────── Retry ───────────────────────
+
 
 @router.callback_query(F.data == "up:retry")
 async def cb_retry(callback: CallbackQuery, state: FSMContext) -> None:

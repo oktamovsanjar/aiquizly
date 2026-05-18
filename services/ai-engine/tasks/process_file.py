@@ -1,4 +1,5 @@
 """Celery task — to'liq AI pipeline"""
+
 import asyncio
 import hashlib
 import logging
@@ -39,8 +40,12 @@ def _get_session_factory():
         if db_url.startswith("postgres://"):
             db_url = db_url.replace("postgres://", "postgresql+asyncpg://")
 
-        _db_engine = create_async_engine(db_url, pool_size=5, max_overflow=2, echo=False)
-        _AsyncSessionLocal = sessionmaker(_db_engine, class_=AsyncSession, expire_on_commit=False)
+        _db_engine = create_async_engine(
+            db_url, pool_size=5, max_overflow=2, echo=False
+        )
+        _AsyncSessionLocal = sessionmaker(
+            _db_engine, class_=AsyncSession, expire_on_commit=False
+        )
         logger.info("DB engine yaratildi (worker singleton)")
     return _AsyncSessionLocal
 
@@ -89,7 +94,7 @@ def _chunk_text(text: str, chunk_size: int = 6000, overlap: int = 300) -> list:
     chunks = []
     i = 0
     while i < len(text):
-        chunk = text[i:i + chunk_size]
+        chunk = text[i : i + chunk_size]
         chunks.append(_Block(raw_text=chunk))
         i += chunk_size - overlap
     return chunks
@@ -134,8 +139,15 @@ async def _process_file_async(
         questions, stats = validate_questions(questions)
         result = _build_result(questions, file_name, file_hash, stats)
         await _save_to_db(
-            AsyncSessionLocal, result, user_id, file_name, file_hash,
-            import_log_id, quiz_group_id, tags, start_time,
+            AsyncSessionLocal,
+            result,
+            user_id,
+            file_name,
+            file_hash,
+            import_log_id,
+            quiz_group_id,
+            tags,
+            start_time,
         )
         return result
     elif file_format == "text":
@@ -146,8 +158,15 @@ async def _process_file_async(
     if not raw_text or not raw_text.strip():
         result = {"total_questions": 0, "total_sets": 0, "questions": []}
         await _save_to_db(
-            AsyncSessionLocal, result, user_id, file_name, file_hash,
-            import_log_id, quiz_group_id, tags, start_time,
+            AsyncSessionLocal,
+            result,
+            user_id,
+            file_name,
+            file_hash,
+            import_log_id,
+            quiz_group_id,
+            tags,
+            start_time,
         )
         return result
 
@@ -158,8 +177,15 @@ async def _process_file_async(
 
     result = _build_result(questions, file_name, file_hash, stats)
     await _save_to_db(
-        AsyncSessionLocal, result, user_id, file_name, file_hash,
-        import_log_id, quiz_group_id, tags, start_time,
+        AsyncSessionLocal,
+        result,
+        user_id,
+        file_name,
+        file_hash,
+        import_log_id,
+        quiz_group_id,
+        tags,
+        start_time,
     )
     return result
 
@@ -177,8 +203,12 @@ async def _save_to_db(
 ) -> None:
     """Natijani DB ga saqlash"""
     from db.queries import (
-        create_quiz, create_questions, create_quiz_sets,
-        get_or_create_tags, attach_tags_to_quiz, update_import_log,
+        create_quiz,
+        create_questions,
+        create_quiz_sets,
+        get_or_create_tags,
+        attach_tags_to_quiz,
+        update_import_log,
     )
     import os
 
@@ -206,7 +236,9 @@ async def _save_to_db(
             # Savollarni yozish
             if questions:
                 await create_questions(session, quiz.id, questions)
-                await create_quiz_sets(session, quiz.id, total, settings.default_set_size)
+                await create_quiz_sets(
+                    session, quiz.id, total, settings.default_set_size
+                )
 
             # Teglar
             if tags:
@@ -246,7 +278,9 @@ async def _save_to_db(
                     pass
 
 
-def _build_result(questions: list, file_name: str, file_hash: str, stats: dict = None) -> Dict[str, Any]:
+def _build_result(
+    questions: list, file_name: str, file_hash: str, stats: dict = None
+) -> Dict[str, Any]:
     total = len(questions)
     set_size = settings.default_set_size
     total_sets = (total + set_size - 1) // set_size if total > 0 else 0

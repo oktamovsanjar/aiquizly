@@ -17,6 +17,7 @@ FSM data (REVIEW state):
   review_qid      : str   — hozir tahrirlayotgan savol UUID (etxt/eans paytida)
   review_q_idx    : int   — hozir tahrirlayotgan savol index (REVIEW_EDITING)
 """
+
 import logging
 
 from aiogram import F, Router
@@ -68,7 +69,7 @@ def _format_question(q: dict, idx: int, total: int) -> str:
 async def _fetch_question(quiz_id: str, idx: int) -> dict | None:
     """AI engine dan bitta savolni oladi (offset=idx, limit=1)."""
     try:
-        questions = await ai_engine_client().get_questions(quiz_id, set_number=1)
+        await ai_engine_client().get_questions(quiz_id, set_number=1)
         # get_questions set bo'yicha ishlaydigan — to'g'ridan-to'g'ri offset orqali olamiz
         resp = await ai_engine_client()._http.get(
             f"/quizzes/{quiz_id}/questions",
@@ -120,6 +121,7 @@ async def _show_question(
 
 # ─── Boshlash ────────────────────────────────────────────────────────────────
 
+
 @router.callback_query(F.data.startswith("rev:start:"))
 async def cb_review_start(cb: CallbackQuery, state: FSMContext) -> None:
     quiz_id = cb.data.split(":", 2)[2]
@@ -137,6 +139,7 @@ async def cb_review_start(cb: CallbackQuery, state: FSMContext) -> None:
 
 # ─── Navigatsiya ─────────────────────────────────────────────────────────────
 
+
 @router.callback_query(StateFilter(QuizStates.REVIEW), F.data.startswith("rev:nav:"))
 async def cb_review_nav(cb: CallbackQuery, state: FSMContext) -> None:
     q_idx = int(cb.data.split(":")[2])
@@ -153,6 +156,7 @@ async def cb_noop(cb: CallbackQuery) -> None:
 
 
 # ─── Savol matnini tahrirlash ─────────────────────────────────────────────────
+
 
 @router.callback_query(StateFilter(QuizStates.REVIEW), F.data.startswith("rev:etxt:"))
 async def cb_edit_text_start(cb: CallbackQuery, state: FSMContext) -> None:
@@ -209,6 +213,7 @@ async def msg_edit_text_input(message: Message, state: FSMContext) -> None:
 
 # ─── To'g'ri javobni o'zgartirish ────────────────────────────────────────────
 
+
 @router.callback_query(StateFilter(QuizStates.REVIEW), F.data.startswith("rev:eans:"))
 async def cb_edit_answer_start(cb: CallbackQuery, state: FSMContext) -> None:
     q_idx = int(cb.data.split(":")[2])
@@ -247,7 +252,9 @@ async def cb_set_answer(cb: CallbackQuery, state: FSMContext) -> None:
             question_id=question_id,
             correct_indices=[opt_idx],
         )
-        await cb.answer(f"✅ To'g'ri javob: {OPTION_LABELS[opt_idx] if opt_idx < len(OPTION_LABELS) else opt_idx}")
+        await cb.answer(
+            f"✅ To'g'ri javob: {OPTION_LABELS[opt_idx] if opt_idx < len(OPTION_LABELS) else opt_idx}"
+        )
     except Exception as exc:
         logger.error("update_question (answer) xatosi: %s", exc)
         await cb.answer("❌ Xatolik yuz berdi", show_alert=True)
@@ -258,6 +265,7 @@ async def cb_set_answer(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─── O'chirish ────────────────────────────────────────────────────────────────
+
 
 @router.callback_query(StateFilter(QuizStates.REVIEW), F.data.startswith("rev:del:"))
 async def cb_delete_confirm(cb: CallbackQuery, state: FSMContext) -> None:
@@ -306,6 +314,7 @@ async def cb_delete_execute(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─── Tayyor ──────────────────────────────────────────────────────────────────
+
 
 @router.callback_query(StateFilter(QuizStates.REVIEW), F.data == "rev:done")
 async def cb_review_done(cb: CallbackQuery, state: FSMContext) -> None:

@@ -9,6 +9,7 @@ Testlar _process_referral() ni tekshiradi:
   - Dublikat: ikkinchi marta None
   - Servis fail bo'lsa ham fail-open
 """
+
 import sys
 import os
 import importlib.util
@@ -16,6 +17,7 @@ import importlib.util
 # handlers/__init__.py ni chetlab, faqat start.py ni yuklash
 _BOT_DIR = os.path.join(os.path.dirname(__file__), "../..")
 sys.path.insert(0, _BOT_DIR)
+
 
 # handlers paketi sifatida yuklamaslik uchun — to'g'ridan spec yuklaymiz
 def _load_start_module():
@@ -28,12 +30,13 @@ def _load_start_module():
     spec.loader.exec_module(mod)
     return mod
 
+
 import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def make_user(telegram_id: int, user_id=None):
     u = MagicMock()
@@ -69,6 +72,7 @@ def make_session(call_results: list):
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_self_referral_blocked():
@@ -145,9 +149,13 @@ async def test_referral_works_even_if_xp_service_fails():
 
     with patch("handlers.start.AsyncSessionLocal", return_value=session):
         with patch("utils.api.subscription_client") as mock_sub:
-            mock_sub.return_value.activate_premium = AsyncMock(side_effect=Exception("xato"))
+            mock_sub.return_value.activate_premium = AsyncMock(
+                side_effect=Exception("xato")
+            )
             with patch("utils.api.game_client") as mock_game:
-                mock_game.return_value.award_xp = AsyncMock(side_effect=Exception("xato"))
+                mock_game.return_value.award_xp = AsyncMock(
+                    side_effect=Exception("xato")
+                )
                 result = await _process_referral(referred, referrer_telegram_id=77777)
 
     # Xato bo'lsa ham nom qaytariladi
@@ -156,8 +164,14 @@ async def test_referral_works_even_if_xp_service_fails():
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
+
 def test_referral_xp_constants():
-    from handlers.start import REFERRAL_XP_REFERRER, REFERRAL_XP_REFERRED, REFERRAL_PREMIUM_DAYS
+    from handlers.start import (
+        REFERRAL_XP_REFERRER,
+        REFERRAL_XP_REFERRED,
+        REFERRAL_PREMIUM_DAYS,
+    )
+
     assert REFERRAL_XP_REFERRER == 50
     assert REFERRAL_XP_REFERRED == 20
     assert REFERRAL_PREMIUM_DAYS == 3

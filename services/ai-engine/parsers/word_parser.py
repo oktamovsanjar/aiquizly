@@ -1,5 +1,5 @@
 """Stage 2: Word (.docx) parser"""
-from typing import Optional
+
 import io
 
 
@@ -10,7 +10,6 @@ def parse_word(file_content: bytes) -> str:
     """
     try:
         from docx import Document
-        from docx.oxml.ns import qn
 
         doc = Document(io.BytesIO(file_content))
         lines = []

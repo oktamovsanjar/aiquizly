@@ -1,4 +1,5 @@
 """All DB operations for the ai-engine service."""
+
 import math
 import re
 import uuid
@@ -10,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import ImportLog, Question, Quiz, QuizSet, QuizTag, Tag
 
-
 # ---------------------------------------------------------------------------
 # ImportLog
 # ---------------------------------------------------------------------------
+
 
 async def create_import_log(
     session: AsyncSession,
@@ -69,9 +70,7 @@ async def update_import_log(
     await session.execute(stmt)
 
 
-async def check_file_hash(
-    session: AsyncSession, file_hash: str
-) -> Optional[ImportLog]:
+async def check_file_hash(session: AsyncSession, file_hash: str) -> Optional[ImportLog]:
     """Returns an existing ImportLog if the file was already processed successfully."""
     stmt = (
         select(ImportLog)
@@ -88,6 +87,7 @@ async def check_file_hash(
 # ---------------------------------------------------------------------------
 # Quiz
 # ---------------------------------------------------------------------------
+
 
 async def create_quiz(
     session: AsyncSession,
@@ -110,9 +110,7 @@ async def create_quiz(
     return quiz
 
 
-async def get_quiz(
-    session: AsyncSession, quiz_id: str
-) -> Optional[Quiz]:
+async def get_quiz(session: AsyncSession, quiz_id: str) -> Optional[Quiz]:
     """Returns a quiz by ID (not soft-deleted)."""
     stmt = (
         select(Quiz)
@@ -123,9 +121,7 @@ async def get_quiz(
     return result.scalar_one_or_none()
 
 
-async def get_user_quizzes(
-    session: AsyncSession, user_id: str
-) -> List[Quiz]:
+async def get_user_quizzes(session: AsyncSession, user_id: str) -> List[Quiz]:
     """Returns all non-deleted quizzes for a user."""
     stmt = (
         select(Quiz)
@@ -155,9 +151,11 @@ async def search_quizzes(
     if query:
         stmt = stmt.where(Quiz.title.ilike(f"%{query}%"))
     if tag_slug:
-        stmt = stmt.join(QuizTag, QuizTag.quiz_id == Quiz.id).join(
-            Tag, Tag.id == QuizTag.tag_id
-        ).where(Tag.slug == tag_slug)
+        stmt = (
+            stmt.join(QuizTag, QuizTag.quiz_id == Quiz.id)
+            .join(Tag, Tag.id == QuizTag.tag_id)
+            .where(Tag.slug == tag_slug)
+        )
     stmt = stmt.order_by(Quiz.play_count.desc()).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
@@ -166,6 +164,7 @@ async def search_quizzes(
 # ---------------------------------------------------------------------------
 # Questions
 # ---------------------------------------------------------------------------
+
 
 async def create_questions(
     session: AsyncSession,
@@ -191,11 +190,7 @@ async def create_questions(
     await session.flush()
 
     # Update quiz total_questions count
-    stmt = (
-        update(Quiz)
-        .where(Quiz.id == quiz_id)
-        .values(total_questions=len(objs))
-    )
+    stmt = update(Quiz).where(Quiz.id == quiz_id).values(total_questions=len(objs))
     await session.execute(stmt)
 
     return objs
@@ -222,6 +217,7 @@ async def get_quiz_questions(
 # ---------------------------------------------------------------------------
 # QuizSets
 # ---------------------------------------------------------------------------
+
 
 async def create_quiz_sets(
     session: AsyncSession,
@@ -255,6 +251,7 @@ async def create_quiz_sets(
 # Tags
 # ---------------------------------------------------------------------------
 
+
 def _slugify(text: str) -> str:
     slug = text.lower().strip()
     slug = re.sub(r"[\s\-]+", "_", slug)
@@ -262,9 +259,7 @@ def _slugify(text: str) -> str:
     return slug[:100]
 
 
-async def get_or_create_tags(
-    session: AsyncSession, tag_slugs: List[str]
-) -> List[Tag]:
+async def get_or_create_tags(session: AsyncSession, tag_slugs: List[str]) -> List[Tag]:
     """Returns existing tags or creates missing ones. Increments usage_count."""
     if not tag_slugs:
         return []
@@ -303,17 +298,13 @@ async def attach_tags_to_quiz(
         session.add(qt)
         # Increment usage_count
         stmt = (
-            update(Tag)
-            .where(Tag.id == tag_id)
-            .values(usage_count=Tag.usage_count + 1)
+            update(Tag).where(Tag.id == tag_id).values(usage_count=Tag.usage_count + 1)
         )
         await session.execute(stmt)
     await session.flush()
 
 
-async def get_trending_tags(
-    session: AsyncSession, limit: int = 10
-) -> List[Tag]:
+async def get_trending_tags(session: AsyncSession, limit: int = 10) -> List[Tag]:
     """Returns top N tags by usage_count."""
     stmt = select(Tag).order_by(Tag.usage_count.desc()).limit(limit)
     result = await session.execute(stmt)
@@ -324,9 +315,8 @@ async def get_trending_tags(
 # Question edit / delete  (review flow)
 # ---------------------------------------------------------------------------
 
-async def get_question(
-    session: AsyncSession, question_id: str
-) -> Optional[Question]:
+
+async def get_question(session: AsyncSession, question_id: str) -> Optional[Question]:
     stmt = select(Question).where(Question.id == uuid.UUID(question_id))
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
@@ -377,12 +367,16 @@ async def delete_question(
     deleted = result.scalar_one_or_none()
     if deleted:
         # Recalculate sort_order and total_questions
-        remaining = (await session.execute(
-            select(func.count()).select_from(Question)
-            .where(Question.quiz_id == uuid.UUID(quiz_id))
-        )).scalar() or 0
+        remaining = (
+            await session.execute(
+                select(func.count())
+                .select_from(Question)
+                .where(Question.quiz_id == uuid.UUID(quiz_id))
+            )
+        ).scalar() or 0
         await session.execute(
-            update(Quiz).where(Quiz.id == uuid.UUID(quiz_id))
+            update(Quiz)
+            .where(Quiz.id == uuid.UUID(quiz_id))
             .values(total_questions=remaining)
         )
         await session.commit()
@@ -430,7 +424,8 @@ async def delete_quiz(session: AsyncSession, quiz_id: str) -> bool:
 
 async def count_questions(session: AsyncSession, quiz_id: str) -> int:
     result = await session.execute(
-        select(func.count()).select_from(Question)
+        select(func.count())
+        .select_from(Question)
         .where(Question.quiz_id == uuid.UUID(quiz_id))
     )
     return result.scalar() or 0

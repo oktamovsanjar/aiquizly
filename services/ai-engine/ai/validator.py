@@ -1,4 +1,5 @@
 """Stage 5: Validation — AI natijasini tekshiradi"""
+
 import logging
 from typing import List, Dict, Any, Tuple
 
@@ -22,11 +23,21 @@ def validate_questions(
     }
     """
     if not isinstance(questions, list):
-        return [], {"skipped_no_options": 0, "few_options": 0, "many_options": 0, "duplicates": 0}
+        return [], {
+            "skipped_no_options": 0,
+            "few_options": 0,
+            "many_options": 0,
+            "duplicates": 0,
+        }
 
     valid = []
     seen_questions = set()
-    stats = {"skipped_no_options": 0, "few_options": 0, "many_options": 0, "duplicates": 0}
+    stats = {
+        "skipped_no_options": 0,
+        "few_options": 0,
+        "many_options": 0,
+        "duplicates": 0,
+    }
 
     for i, q in enumerate(questions):
         if not isinstance(q, dict):
@@ -43,7 +54,9 @@ def validate_questions(
             continue
 
         correct_index = q.get("correct_index")
-        if not isinstance(correct_index, int) or not (0 <= correct_index < len(options)):
+        if not isinstance(correct_index, int) or not (
+            0 <= correct_index < len(options)
+        ):
             logger.warning("Savol %d: correct_index noto'g'ri: %s", i, correct_index)
             continue
 
@@ -59,11 +72,13 @@ def validate_questions(
         elif n > STANDARD_OPTIONS:
             stats["many_options"] += 1
 
-        valid.append({
-            "question": question_text,
-            "options": [str(o).strip() for o in options],
-            "correct_index": correct_index,
-            "explanation": q.get("explanation", "") or "",
-        })
+        valid.append(
+            {
+                "question": question_text,
+                "options": [str(o).strip() for o in options],
+                "correct_index": correct_index,
+                "explanation": q.get("explanation", "") or "",
+            }
+        )
 
     return valid, stats

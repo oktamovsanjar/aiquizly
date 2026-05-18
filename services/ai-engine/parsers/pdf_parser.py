@@ -1,6 +1,7 @@
 """Stage 2: PDF parser — PyMuPDF (fitz)"""
+
 import logging
-from typing import List, Tuple
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,9 @@ def parse_pdf(file_content: bytes) -> str:
             if len(stripped) < _SCANNED_PAGE_CHAR_THRESHOLD:
                 # Page is likely scanned — mark it so callers can detect it
                 logger.debug(
-                    "Page %d appears scanned (text length=%d)", page_num + 1, len(stripped)
+                    "Page %d appears scanned (text length=%d)",
+                    page_num + 1,
+                    len(stripped),
                 )
                 pages_text.append(f"[SCANNED_PAGE:{page_num + 1}]")
             else:
