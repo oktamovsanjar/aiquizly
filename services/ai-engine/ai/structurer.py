@@ -23,11 +23,12 @@ def _repair_truncated_json(raw: str) -> List[Dict[str, Any]]:
     """
     Truncated JSON dan to'liq savollarni regex orqali tiklash.
     DeepSeek javobni kesib tashlaganda bu funksiya ishlatiladi.
+    AI prompt format: {"question": "...", "options": [...], "correct_index": N}
     """
     pattern = re.compile(
-        r'\{\s*"question_text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,'
+        r'\{\s*"question"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,'
         r'\s*"options"\s*:\s*\[((?:[^\[\]]|\[(?:[^\[\]])*\])*)\]\s*,'
-        r'\s*"correct_indices"\s*:\s*\[(\d+)\]',
+        r'\s*"correct_index"\s*:\s*(\d+)',
         re.DOTALL,
     )
     results = []
@@ -40,9 +41,9 @@ def _repair_truncated_json(raw: str) -> List[Dict[str, Any]]:
             if isinstance(options, list) and len(options) >= 2:
                 results.append(
                     {
-                        "question_text": q_text,
+                        "question": q_text,
                         "options": options,
-                        "correct_indices": [correct],
+                        "correct_index": correct,
                     }
                 )
         except Exception:
