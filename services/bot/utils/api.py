@@ -161,16 +161,28 @@ class GameClient:
         params: dict[str, Any] = {"limit": limit}
         if tag:
             params["tag"] = tag
-        resp = await self._http.get(f"/leaderboard/{period}", params=params)
-        _raise_for_service("game", resp)
-        return resp.json()
+
+        async def _fetch():
+            resp = await self._http.get(f"/leaderboard/{period}", params=params)
+            _raise_for_service("game", resp)
+            return resp.json()
+        return await _cached(f"lb:{period}:{tag}:{limit}", ttl=30, coro=_fetch())
 
     async def get_user_rank(self, user_id: int, period: str = "all") -> dict[str, Any]:
-        resp = await self._http.get(
-            f"/users/{user_id}/rank", params={"period": period}
-        )
-        _raise_for_service("game", resp)
-        return resp.json()
+        async def _fetch():
+            resp = await self._http.get(
+                f"/users/{user_id}/rank", params={"period": period}
+            )
+            _raise_for_service("game", resp)
+            return resp.json()
+        return await _cached(f"rank:{user_id}:{period}", ttl=30, coro=_fetch())
+
+    async def get_user_stats(self, user_id: int) -> dict[str, Any]:
+        async def _fetch():
+            resp = await self._http.get(f"/users/{user_id}/stats")
+            _raise_for_service("game", resp)
+            return resp.json()
+        return await _cached(f"stats:{user_id}", ttl=20, coro=_fetch())
 
     async def award_xp(self, user_id: int, xp: int, reason: str) -> dict[str, Any]:
         resp = await self._http.post(
@@ -178,6 +190,9 @@ class GameClient:
             json={"xp": xp, "reason": reason},
         )
         _raise_for_service("game", resp)
+        _cache_invalidate(f"stats:{user_id}")
+        _cache_invalidate(f"rank:{user_id}")
+        _cache_invalidate("lb:")
         return resp.json()
 
     async def get_group_leaderboard(self, chat_id: int, game_session_id: str) -> dict[str, Any]:
