@@ -287,61 +287,55 @@ async def close_payment(cb: CallbackQuery) -> None:
 @router.message(Command("top"))
 @router.message(F.text.in_({"🏆 Reyting", "🏆 Rating", "🏆 Рейтинг"}))
 async def show_leaderboard(message: Message) -> None:
-    await _send_leaderboard(message, "all")
+    await _send_leaderboard(message, "all", caller_id=message.from_user.id)
 
 
 @router.callback_query(F.data.startswith("lb:tab:"))
 async def leaderboard_tab(cb: CallbackQuery) -> None:
     tab = cb.data.split(":")[2]
-    await _send_leaderboard(cb.message, tab, edit=True)
+    await _send_leaderboard(cb.message, tab, edit=True, caller_id=cb.from_user.id)
     await cb.answer()
 
 
-async def _send_leaderboard(message: Message, period: str, edit: bool = False) -> None:
-    period_map = {
-        "today": ("daily", None),
-        "week": ("weekly", None),
-        "month": ("monthly", None),
-        "all": ("alltime", None),
-    }
-    api_period, _ = period_map.get(period, ("alltime", None))
+async def _send_leaderboard(message: Message, period: str, edit: bool = False, caller_id: int | None = None) -> None:
+    api_period = {"today": "daily", "week": "weekly", "month": "monthly", "all": "alltime"}.get(period, "alltime")
+    period_label = {"today": "Bugun", "week": "Hafta", "month": "Oy", "all": "Barchasi"}.get(period, "Barchasi")
 
-    # Get user language
-    lang = "uz"
-    try:
-        if hasattr(message, "from_user") and message.from_user:
-            from db import AsyncSessionLocal
-            from db.models import User
-            from sqlalchemy import select
-            async with AsyncSessionLocal() as session:
-                result = await session.execute(
-                    select(User).where(User.telegram_id == message.from_user.id)
-                )
-                user = result.scalar_one_or_none()
-                if user:
-                    lang = user.language_code or "uz"
-    except Exception:
-        pass
+    user_tg_id = caller_id or (message.from_user.id if message.from_user else None)
 
     try:
-        data = await game_client().get_leaderboard(period=api_period, limit=10)
-        entries = data.get("entries", [])
+        lb_coro = game_client().get_leaderboard(period=api_period, limit=10)
+        rank_coro = game_client().get_user_rank(user_tg_id, period=api_period) if user_tg_id else None
+        if rank_coro:
+            (lb_data, rank_data) = await asyncio.gather(lb_coro, rank_coro)
+        else:
+            lb_data = await lb_coro
+            rank_data = None
+        entries = lb_data.get("entries", [])
     except Exception:
-        entries = []
+        entries, rank_data = [], None
 
+    medals = ["🥇", "🥈", "🥉"]
     if not entries:
-        text = t("leaderboard_title", lang) + "\n\n" + t("leaderboard_empty", lang)
+        text = f"🏆 <b>Reyting — {period_label}</b>\n\n<i>Hozircha ma'lumot yo'q</i>"
     else:
-        medals = ["🥇", "🥈", "🥉"]
-        lines = [t("leaderboard_title", lang) + "\n"]
+        lines = [f"🏆 <b>Reyting — {period_label}</b>\n"]
         for i, e in enumerate(entries[:10]):
-            medal = medals[i] if i < 3 else f"{i + 1}."
-            user_id = e.get("user_id", "")
+            medal = medals[i] if i < 3 else f"  {i + 1}."
+            name = e.get("username") or e.get("first_name") or f"User {e.get('user_id', '')}"
             score = e.get("total_score", e.get("score", 0))
-            lines.append(f"{medal} {user_id} — {score} ball")
+            xp = e.get("xp")
+            xp_str = f"  ·  {xp} XP" if xp else ""
+            # O'zini belgilash
+            marker = " 👈" if e.get("user_id") == user_tg_id else ""
+            lines.append(f"{medal} <b>{name}</b> — {score} ball{xp_str}{marker}")
         text = "\n".join(lines)
 
-    tab_label = {"today": "Bugun", "week": "Hafta", "month": "Oy", "all": "Barchasi"}.get(period, "Barchasi")
+    # O'z o'rni top-10 da bo'lmasa qo'shamiz
+    if rank_data and rank_data.get("rank") and rank_data["rank"] > 10:
+        rank = rank_data["rank"]
+        score = rank_data.get("total_score", rank_data.get("score", 0))
+        text += f"\n\n<i>Sizning o'rningiz: {rank}-o'rin — {score} ball</i>"
 
     try:
         if edit:

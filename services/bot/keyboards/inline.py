@@ -347,7 +347,7 @@ def subscribe_group_keyboard(group_id: int, is_subscribed: bool) -> InlineKeyboa
 # ──────────────────────────── Leaderboard ────────────────────────────
 
 
-def leaderboard_tabs_keyboard(active_tab: str = "all", tag: str | None = None) -> InlineKeyboardMarkup:
+def leaderboard_tabs_keyboard(active_tab: str = "all") -> InlineKeyboardMarkup:
     tabs = [
         ("Bugun", "today"),
         ("Hafta", "week"),
@@ -356,27 +356,13 @@ def leaderboard_tabs_keyboard(active_tab: str = "all", tag: str | None = None) -
     ]
     nav: list[InlineKeyboardButton] = []
     for label, tab_id in tabs:
-        if tab_id == active_tab:
-            nav.append(
-                InlineKeyboardButton(text=f"[{label}]", callback_data=f"lb:tab:{tab_id}")
-            )
-        else:
-            nav.append(
-                InlineKeyboardButton(text=label, callback_data=f"lb:tab:{tab_id}")
-            )
+        text = f"· {label} ·" if tab_id == active_tab else label
+        nav.append(InlineKeyboardButton(text=text, callback_data=f"lb:tab:{tab_id}"))
 
-    tag_suffix = f":{tag}" if tag else ""
-    rows: list[list[InlineKeyboardButton]] = [
+    return _kb(
         nav,
-        [
-            InlineKeyboardButton(
-                text="🏷 Teg bo'yicha filter",
-                callback_data=f"lb:tag_filter{tag_suffix}",
-            )
-        ],
         [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    )
 
 
 # ──────────────────────────── Payment ────────────────────────────
