@@ -17,6 +17,7 @@ import uuid
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart
+from aiogram.filters.command import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -320,9 +321,9 @@ async def unsubscribe_group(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.message(CommandStart(deep_link=True, magic=F.args.startswith("g_")))
-async def open_group_link(message: Message, state: FSMContext) -> None:
+async def open_group_link(message: Message, state: FSMContext, command: CommandObject) -> None:
     """Guruh link orqali kirish: /start g_<slug>"""
-    slug = message.args[2:]  # "g_" ni olib tashlash
+    slug = (command.args or "")[2:]  # "g_" ni olib tashlash
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(

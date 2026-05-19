@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.filters import CommandStart
+from aiogram.filters.command import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy import select, update
@@ -126,9 +127,9 @@ async def _process_referral(
 
 
 @router.message(CommandStart(deep_link=True, magic=F.args.startswith("quiz_")))
-async def cmd_start_quiz(message: Message, state: FSMContext) -> None:
+async def cmd_start_quiz(message: Message, state: FSMContext, command: CommandObject) -> None:
     """Deep link orqali quiz ochish: /start quiz_<quiz_id>"""
-    quiz_id = message.args[5:]
+    quiz_id = (command.args or "")[5:]
     user, is_new = await _upsert_user(message)
 
     # Yangi user — avval til tanlashi kerak, quiz_id ni saqlaymiz
@@ -148,9 +149,9 @@ async def cmd_start_quiz(message: Message, state: FSMContext) -> None:
 
 
 @router.message(CommandStart(deep_link=True, magic=F.args.startswith("ref_")))
-async def cmd_start_referral(message: Message) -> None:
+async def cmd_start_referral(message: Message, command: CommandObject) -> None:
     """Deep link orqali kirish: /start ref_<telegram_id>"""
-    args = message.args  # "ref_123456789"
+    args = command.args or ""
     try:
         referrer_tg_id = int(args[4:])  # "ref_" ni olib tashlaymiz
     except (ValueError, IndexError):
@@ -233,17 +234,26 @@ async def _open_quiz_by_id(
     try:
         quiz = await ai_engine_client().get_quiz(quiz_id)
         title = quiz.get("title", quiz.get("name", "Quiz"))
-        sets = await ai_engine_client().get_sets(quiz_id)
+        total_q = quiz.get("total_questions", 0)
+        set_size = 20
+        num_sets = max(1, (total_q + set_size - 1) // set_size)
+        sets = [
+            {"set_number": i + 1, "question_count": min(set_size, total_q - i * set_size)}
+            for i in range(num_sets)
+        ]
     except Exception:
         await message.answer("❌ Quiz topilmadi.")
         return
 
     await state.set_state(QuizStates.BROWSING_MY_QUIZZES)
     await state.update_data(
-        language_code=lang, selected_quiz_id=quiz_id, selected_quiz_title=title
+        language_code=lang, selected_quiz_id=quiz_id, selected_quiz_title=title,
+        quiz_id=quiz_id, quiz_title=title,
     )
     await message.answer(
-        f"📋 <b>{title}</b>\n\nSet tanlang:",
+        f"📋 <b>{title}</b>\n"
+        f"📏 {total_q} savol | {num_sets} set\n\n"
+        "Set tanlang:",
         reply_markup=set_select_keyboard(sets, quiz_id),
     )
 

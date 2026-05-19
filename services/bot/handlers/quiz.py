@@ -407,13 +407,11 @@ async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
 async def play_quiz_direct(cb: CallbackQuery, state: FSMContext) -> None:
     """Upload tugagandan keyin bevosita o'ynash uchun shortcut."""
     quiz_id = cb.data.split(":")[2]
-    cb.data = f"qb:quiz:{quiz_id}"
-    await select_quiz(cb, state)
+    await _show_set_select(cb, state, quiz_id)
 
 
-@router.callback_query(F.data.startswith("qb:quiz:"))
-async def select_quiz(cb: CallbackQuery, state: FSMContext) -> None:
-    quiz_id = cb.data.split(":")[2]
+async def _show_set_select(cb: CallbackQuery, state: FSMContext, quiz_id: str) -> None:
+    """Set tanlash ekranini ko'rsatish — ichki yordamchi."""
     try:
         quiz = await ai_engine_client().get_quiz(quiz_id)
     except Exception:
@@ -438,6 +436,12 @@ async def select_quiz(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
 
 
+@router.callback_query(F.data.startswith("qb:quiz:"))
+async def select_quiz(cb: CallbackQuery, state: FSMContext) -> None:
+    quiz_id = cb.data.split(":")[2]
+    await _show_set_select(cb, state, quiz_id)
+
+
 # ─────────────────────────── Navigatsiya / Orqaga ───────────────────────────
 
 
@@ -446,10 +450,8 @@ async def back_to_quiz_list(cb: CallbackQuery, state: FSMContext) -> None:
     """Set tanlash ekranidan quiz ro'yxatiga qaytish."""
     browsing_state = await state.get_state()
     if browsing_state == QuizStates.BROWSING_PUBLIC.state:
-        cb.data = "qb:public"
         await browse_public_quizzes(cb, state)
     else:
-        cb.data = "qb:my"
         await browse_my_quizzes(cb, state)
 
 
@@ -457,8 +459,7 @@ async def back_to_quiz_list(cb: CallbackQuery, state: FSMContext) -> None:
 async def back_to_set_select(cb: CallbackQuery, state: FSMContext) -> None:
     """Vaqt tanlashdan set tanlashga qaytish."""
     quiz_id = cb.data.split(":")[2]
-    cb.data = f"qb:quiz:{quiz_id}"
-    await select_quiz(cb, state)
+    await _show_set_select(cb, state, quiz_id)
 
 
 @router.callback_query(F.data.startswith("qp:change_time:"))

@@ -32,14 +32,14 @@ _cache_lock = asyncio.Lock()
 
 
 async def _cached(key: str, ttl: float, coro) -> Any:
-    """TTL cache wrapper. ttl — sekund."""
+    """TTL cache wrapper. coro — coroutine yoki callable bo'lishi mumkin."""
     now = time.monotonic()
     async with _cache_lock:
         if key in _cache:
             exp, val = _cache[key]
             if now < exp:
                 return val
-    result = await coro
+    result = await (coro() if callable(coro) else coro)
     async with _cache_lock:
         _cache[key] = (now + ttl, result)
     return result
@@ -171,7 +171,7 @@ class GameClient:
             _raise_for_service("game", resp)
             return resp.json()
 
-        return await _cached(f"lb:{period}:{tag}:{limit}", ttl=30, coro=_fetch())
+        return await _cached(f"lb:{period}:{tag}:{limit}", ttl=30, coro=_fetch)
 
     async def get_user_rank(self, user_id: int, period: str = "all") -> dict[str, Any]:
         async def _fetch():
@@ -181,7 +181,7 @@ class GameClient:
             _raise_for_service("game", resp)
             return resp.json()
 
-        return await _cached(f"rank:{user_id}:{period}", ttl=30, coro=_fetch())
+        return await _cached(f"rank:{user_id}:{period}", ttl=30, coro=_fetch)
 
     async def get_user_stats(self, user_id: int) -> dict[str, Any]:
         async def _fetch():
@@ -189,7 +189,7 @@ class GameClient:
             _raise_for_service("game", resp)
             return resp.json()
 
-        return await _cached(f"stats:{user_id}", ttl=20, coro=_fetch())
+        return await _cached(f"stats:{user_id}", ttl=20, coro=_fetch)
 
     async def award_xp(self, user_id: int, xp: int, reason: str) -> dict[str, Any]:
         resp = await self._http.post(
@@ -305,7 +305,7 @@ class AIEngineClient:
             _raise_for_service("ai-engine", resp)
             return resp.json()
 
-        return await _cached(cache_key, ttl=ttl, coro=_fetch())
+        return await _cached(cache_key, ttl=ttl, coro=_fetch)
 
     async def get_quiz(self, quiz_id: str) -> dict[str, Any]:
         async def _fetch():
@@ -313,7 +313,13 @@ class AIEngineClient:
             _raise_for_service("ai-engine", resp)
             return resp.json()
 
-        return await _cached(f"quiz:{quiz_id}", ttl=30, coro=_fetch())
+        return await _cached(f"quiz:{quiz_id}", ttl=30, coro=_fetch)
+
+    async def get_sets(self, quiz_id: str) -> list[dict[str, Any]]:
+        """Quiz setlari ro'yxatini qaytaradi — set_number va questions_count bilan."""
+        quiz = await self.get_quiz(quiz_id)
+        total_sets = quiz.get("total_sets", quiz.get("sets_count", 0))
+        return [{"set_number": i + 1} for i in range(total_sets)]
 
     async def get_questions(
         self,
@@ -328,7 +334,7 @@ class AIEngineClient:
             data = resp.json()
             return data if isinstance(data, list) else data.get("questions", [])
 
-        return await _cached(f"qset:{quiz_id}:{set_number}", ttl=60, coro=_fetch())
+        return await _cached(f"qset:{quiz_id}:{set_number}", ttl=60, coro=_fetch)
 
     async def save_quiz(
         self,
