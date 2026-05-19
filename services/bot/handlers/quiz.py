@@ -5,6 +5,7 @@ import logging
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import (
     CallbackQuery,
     Message,
@@ -807,9 +808,17 @@ async def _auto_advance(
 @router.poll_answer()
 async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext, bot: Bot) -> None:
     """Foydalanuvchi poll ga javob berganda."""
-    data = await state.get_data()
+    # Guruhda voter_chat tufayli FSMContext noto'g'ri chat_id bilan keladi.
+    # User state har doim user_id = chat_id kalit bilan saqlanadi — qo'lda olamiz.
+    user_id = poll_answer.user.id
+    real_state = FSMContext(
+        storage=state.storage,
+        key=StorageKey(bot_id=bot.id, chat_id=user_id, user_id=user_id),
+    )
+    data = await real_state.get_data()
     if not data.get("questions"):
         return
+    state = real_state
 
     current_poll_id = data.get("current_poll_id")
     last_poll_id = data.get("last_poll_id")
