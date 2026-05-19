@@ -1014,7 +1014,9 @@ async def _show_results(
         try:
             from utils.api import _cache_invalidate
 
-            result = await game_client().finish_game(game_id, status="completed")
+            result = await game_client().finish_game(
+                game_id, status="completed", correct=correct, total=total
+            )
             xp_earned = result.get("xp_earned", 0)
             new_achievements = result.get("new_achievements", [])
             # Stats/rank cache ni tozalaymiz — profil yangi XP ni ko'rsin

@@ -145,10 +145,17 @@ class GameClient:
         self,
         game_id: str,
         status: str = "completed",
+        correct: int | None = None,
+        total: int | None = None,
     ) -> dict[str, Any]:
+        body: dict = {"status": status}
+        if correct is not None:
+            body["correct_answers"] = correct
+        if total is not None:
+            body["total_questions"] = total
         resp = await self._http.put(
             f"/games/{game_id}/finish",
-            json={"status": status},
+            json=body,
         )
         # 409 = allaqachon tugagan — XP yo'qolmasin, bo'sh dict qaytaramiz
         if resp.status_code == 409:

@@ -28,7 +28,7 @@ type GameHandler struct {
 // LeaderboardUpdater — leaderboard yangilash interfeysi
 type LeaderboardUpdater interface {
 	UpdateAll(ctx context.Context, userID uuid.UUID, score int, correct int, games int, accuracy float64) error
-	UpdateAllAndCheck(ctx context.Context, userID uuid.UUID, score int) (*leaderboard.RankChange, error)
+	UpdateAllAndCheck(ctx context.Context, userID uuid.UUID, totalXP int, sessionXP int) (*leaderboard.RankChange, error)
 	PushNotification(ctx context.Context, telegramID int64, text string, buttons []leaderboard.InlineBtn) error
 }
 
@@ -272,7 +272,8 @@ func (h *GameHandler) SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isCorrectPtr := &isCorrect
-	if len(req.SelectedIndices) == 0 && req.ChosenOption == nil {
+	// Skip holatini aniqlash: na SelectedIndices, na ChosenOption yuborilmagan
+	if len(req.SelectedIndices) == 0 && req.ChosenOption == nil && req.IsCorrect == nil {
 		isCorrectPtr = nil // skip
 	}
 
@@ -480,6 +481,14 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bot tomonidan yuborilgan to'g'ri javoblar (shuffle tufayli DB dan farq qilishi mumkin)
+	var finishReq struct {
+		Status         string `json:"status"`
+		CorrectAnswers *int   `json:"correct_answers"`
+		TotalQuestions *int   `json:"total_questions"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&finishReq)
+
 	game, err := h.queries.GetGame(ctx, gameID)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -496,19 +505,37 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bot yuborgan qiymatlar ustunlik qiladi (shuffle tufayli DB dan aniqroq)
+	correctAnswers := game.CorrectAnswers
+	totalQuestions := game.TotalQuestions
+	if finishReq.CorrectAnswers != nil {
+		correctAnswers = *finishReq.CorrectAnswers
+	}
+	if finishReq.TotalQuestions != nil {
+		totalQuestions = *finishReq.TotalQuestions
+	}
+
 	// Yakuniy ball hisoblash
 	finalScore := scoring.CalculateScore(
-		game.CorrectAnswers, game.TotalQuestions,
+		correctAnswers, totalQuestions,
 		int64(game.TimeSpentSeconds*1000),
-		int64(game.TotalQuestions*30000),
+		int64(totalQuestions*30000),
 	)
+
+	wrongAnswers := game.WrongAnswers
+	if finishReq.CorrectAnswers != nil && finishReq.TotalQuestions != nil {
+		wrongAnswers = *finishReq.TotalQuestions - correctAnswers - game.SkippedAnswers
+		if wrongAnswers < 0 {
+			wrongAnswers = 0
+		}
+	}
 
 	now := time.Now()
 	if err := h.queries.UpdateGame(ctx, gameID, db.UpdateGameParams{
 		Status:               "completed",
 		CurrentQuestionIndex: game.CurrentQuestionIndex,
-		CorrectAnswers:       game.CorrectAnswers,
-		WrongAnswers:         game.WrongAnswers,
+		CorrectAnswers:       correctAnswers,
+		WrongAnswers:         wrongAnswers,
 		SkippedAnswers:       game.SkippedAnswers,
 		Score:                finalScore,
 		TimeSpentSeconds:     game.TimeSpentSeconds,
@@ -527,8 +554,8 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		newStreak = 0
 	}
 
-	// XP hisoblash
-	xpEarned := scoring.CalculateXP(game.CorrectAnswers, game.TotalQuestions, newStreak)
+	// XP hisoblash (bot yuborgan to'g'ri qiymatlar ishlatiladi)
+	xpEarned := scoring.CalculateXP(correctAnswers, totalQuestions, newStreak)
 
 	// Streak milestone bonusi
 	streakBonus := streak.ShouldAwardStreakBonus(newStreak)
@@ -596,7 +623,7 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 	xpLogs := []db.AddXPLogParams{
 		{UserID: game.UserID, Amount: scoring.BaseXP, Reason: "quiz_complete", ReferenceID: &gameRef},
 	}
-	if game.CorrectAnswers == game.TotalQuestions {
+	if correctAnswers == totalQuestions {
 		xpLogs = append(xpLogs, db.AddXPLogParams{
 			UserID: game.UserID, Amount: scoring.PerfectBonusXP,
 			Reason: "perfect_score", ReferenceID: &gameRef,
@@ -632,7 +659,7 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	event := "game_complete"
-	if game.CorrectAnswers == game.TotalQuestions {
+	if correctAnswers == totalQuestions {
 		event = "perfect_score"
 	}
 
@@ -660,7 +687,7 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Leaderboard yangilash va reyting o'zgarishini tekshirish
-	change, err := h.lb.UpdateAllAndCheck(ctx, game.UserID, totalXP)
+	change, err := h.lb.UpdateAllAndCheck(ctx, game.UserID, totalXP, xpEarned)
 	if err != nil {
 		h.log.Warn("leaderboard yangilanmadi", zap.Error(err))
 	}

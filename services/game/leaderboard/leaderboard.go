@@ -42,39 +42,38 @@ func New(redisClient *redis.Client) *Service {
 	return &Service{redis: redisClient}
 }
 
-// AddScore — foydalanuvchi balini leaderboard ga qo'shadi
-func (s *Service) AddScore(ctx context.Context, userID string, score float64) error {
+// AddScore — alltime uchun ZADD (set), kunlik/haftalik uchun ZIncrBy (qo'shish)
+func (s *Service) AddScore(ctx context.Context, userID string, totalXP float64, sessionScore float64) error {
 	now := time.Now()
 
-	periods := map[string]string{
-		PeriodDaily:   fmt.Sprintf("%s:%s", PeriodDaily, now.Format("2006-01-02")),
-		PeriodWeekly:  fmt.Sprintf("%s:%s", PeriodWeekly, isoWeek(now)),
-		PeriodMonthly: fmt.Sprintf("%s:%s", PeriodMonthly, now.Format("2006-01")),
-		PeriodAllTime: PeriodAllTime,
-	}
-
 	pipe := s.redis.Pipeline()
-	for _, key := range periods {
-		redisKey := fmt.Sprintf("leaderboard:%s", key)
-		pipe.ZIncrBy(ctx, redisKey, score, userID)
-		if key[:5] == PeriodDaily {
-			pipe.Expire(ctx, redisKey, 48*time.Hour)
-		} else if key[:6] == PeriodWeekly {
-			pipe.Expire(ctx, redisKey, 14*24*time.Hour)
-		}
-	}
+
+	// Alltime: to'liq XP ni set qilamiz (har safar yangilaydi)
+	pipe.ZAdd(ctx, "leaderboard:alltime", redis.Z{Score: totalXP, Member: userID})
+
+	// Kunlik/haftalik/oylik: faqat bu sessiya ballini qo'shamiz
+	dailyKey := fmt.Sprintf("leaderboard:%s:%s", PeriodDaily, now.Format("2006-01-02"))
+	weeklyKey := fmt.Sprintf("leaderboard:%s:%s", PeriodWeekly, isoWeek(now))
+	monthlyKey := fmt.Sprintf("leaderboard:%s:%s", PeriodMonthly, now.Format("2006-01"))
+
+	pipe.ZIncrBy(ctx, dailyKey, sessionScore, userID)
+	pipe.Expire(ctx, dailyKey, 48*time.Hour)
+	pipe.ZIncrBy(ctx, weeklyKey, sessionScore, userID)
+	pipe.Expire(ctx, weeklyKey, 14*24*time.Hour)
+	pipe.ZIncrBy(ctx, monthlyKey, sessionScore, userID)
+
 	_, err := pipe.Exec(ctx)
 	return err
 }
 
 // UpdateAllAndCheck — ballarni yangilaydi va reyting o'zgarishini qaytaradi
-func (s *Service) UpdateAllAndCheck(ctx context.Context, userID uuid.UUID, score int) (*RankChange, error) {
+func (s *Service) UpdateAllAndCheck(ctx context.Context, userID uuid.UUID, totalXP int, sessionXP int) (*RankChange, error) {
 	uid := userID.String()
 
 	// Yangilashdan oldingi o'rinni olish
 	oldRank, _, oldErr := s.GetUserRank(ctx, "all", "alltime", uid)
 
-	if err := s.AddScore(ctx, uid, float64(score)); err != nil {
+	if err := s.AddScore(ctx, uid, float64(totalXP), float64(sessionXP)); err != nil {
 		return nil, err
 	}
 
@@ -103,8 +102,8 @@ func (s *Service) UpdateAllAndCheck(ctx context.Context, userID uuid.UUID, score
 }
 
 // UpdateAll — barcha periodlar uchun leaderboard ni yangilaydi
-func (s *Service) UpdateAll(ctx context.Context, userID uuid.UUID, score int, correct int, games int, accuracy float64) error {
-	_, err := s.UpdateAllAndCheck(ctx, userID, score)
+func (s *Service) UpdateAll(ctx context.Context, userID uuid.UUID, totalXP int, correct int, games int, accuracy float64) error {
+	_, err := s.UpdateAllAndCheck(ctx, userID, totalXP, totalXP)
 	return err
 }
 
