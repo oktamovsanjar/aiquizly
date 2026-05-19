@@ -77,6 +77,7 @@ async def check_file_hash(session: AsyncSession, file_hash: str) -> Optional[Imp
         .where(ImportLog.file_hash == file_hash)
         .where(ImportLog.status == "completed")
         .where(ImportLog.total_imported > 0)
+        .where(ImportLog.quiz_id.isnot(None))
         .order_by(ImportLog.created_at.desc())
         .limit(1)
     )
