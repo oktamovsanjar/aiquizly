@@ -669,7 +669,7 @@ async def _send_next_question(
     data, current_state = await asyncio.gather(state.get_data(), state.get_state())
 
     # Agar quiz to'xtatilgan / pauzada bo'lsa — savol yuborma
-    if current_state not in (QuizStates.QUIZ_PLAYING.state, None):
+    if current_state != QuizStates.QUIZ_PLAYING.state:
         return
 
     questions = data.get("questions", [])
@@ -961,6 +961,7 @@ async def pause_and_finish(cb: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "qp:continue")
 async def continue_quiz(cb: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(QuizStates.QUIZ_PLAYING)
+    await state.update_data(_finishing=False)
     chat_id = cb.message.chat.id
     user_id = cb.from_user.id
     await cb.message.delete()
@@ -1058,7 +1059,7 @@ async def _show_results(
         await bot.send_message(chat_id, text, reply_markup=kb)
 
     # State ni IDLE ga qaytaramiz lekin data ni SAQLAYMIZ — retry uchun kerak
-    await state.set_state(None)
+    await state.set_state(QuizStates.IDLE)
 
 
 # ─────────────────────────── Xatolarni qayta ishlash ───────────────────────────
@@ -1104,6 +1105,7 @@ async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
         set_number=set_number,
         time_sec=time_sec,
         is_retry=True,
+        _finishing=False,
     )
 
     await cb.message.answer(
