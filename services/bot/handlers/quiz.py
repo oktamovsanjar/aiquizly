@@ -607,6 +607,7 @@ async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
         skipped=0,
         wrong_question_ids=[],
         current_poll_id=None,
+        _finishing=False,
     )
 
     questions_result, game_result = await asyncio.gather(
