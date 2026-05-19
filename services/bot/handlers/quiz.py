@@ -364,18 +364,29 @@ async def browse_public_quizzes(cb: CallbackQuery, state: FSMContext) -> None:
     mode = cb.data.split(":")[1]
     try:
         if mode == "trending":
-            data = await ai_engine_client().get_quizzes(tag=None, public=True)
+            data = await ai_engine_client().get_quizzes(tag=None, public=True, page_size=20)
+            quizzes_trend = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
+            if quizzes_trend:
+                # Eng ko'p o'ynalgan quiz
+                top = max(quizzes_trend, key=lambda q: q.get("play_count", 0))
+                await cb.answer()
+                await _show_set_select(cb, state, top["id"])
+                return
+            data = {"quizzes": []}
         elif mode == "random":
             import random
 
-            data = await ai_engine_client().get_quizzes(public=True, page_size=20)
+            data = await ai_engine_client().get_quizzes(public=True, page_size=50)
             quizzes_all = (
                 data.get("quizzes", []) if isinstance(data, dict) else (data or [])
             )
             if quizzes_all:
-                random.shuffle(quizzes_all)
-                quizzes_all = quizzes_all[:5]
-            data = {"quizzes": quizzes_all}
+                quiz = random.choice(quizzes_all)
+                # To'g'ridan tasodifiy quizga yo'naltirish
+                await cb.answer()
+                await _show_set_select(cb, state, quiz["id"])
+                return
+            data = {"quizzes": []}
         else:
             data = await ai_engine_client().get_quizzes(public=True)
         quizzes = data.get("quizzes", []) if isinstance(data, dict) else (data or [])
