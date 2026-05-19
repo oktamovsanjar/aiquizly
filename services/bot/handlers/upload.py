@@ -370,12 +370,12 @@ async def cb_reprocess(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("up:existing:"))
 async def cb_existing_quiz(callback: CallbackQuery, state: FSMContext) -> None:
-    """Mavjud quizga o'tish."""
+    """Mavjud quizga o'tish — to'g'ridan set tanlash ekrani."""
     quiz_id = callback.data.split(":", 2)[2]
-    await state.clear()
     await callback.answer()
-    from keyboards.inline import quiz_manage_keyboard
+    from keyboards.inline import set_select_keyboard
     from utils.api import ai_engine_client as _ai
+    from fsm.states import QuizStates
 
     try:
         quiz = await _ai().get_quiz(quiz_id)
@@ -383,14 +383,22 @@ async def cb_existing_quiz(callback: CallbackQuery, state: FSMContext) -> None:
         total_q = quiz.get("total_questions", 0)
         set_size = 20
         num_sets = max(1, (total_q + set_size - 1) // set_size) if total_q else 1
-        is_public = quiz.get("visibility", "private") == "public"
+        sets = [
+            {"set_number": i + 1, "question_count": min(set_size, total_q - i * set_size)}
+            for i in range(num_sets)
+        ]
         me = await callback.bot.get_me()
         share_link = f"https://t.me/{me.username}?start=quiz_{quiz_id}"
+
+        await state.set_state(QuizStates.BROWSING_MY_QUIZZES)
+        await state.update_data(quiz_id=quiz_id, quiz_title=title)
+
         await callback.message.edit_text(
             f"📋 <b>{title}</b>\n"
             f"📏 {total_q} savol | {num_sets} set\n\n"
-            f"🔗 <code>{share_link}</code>",
-            reply_markup=quiz_manage_keyboard(quiz_id, is_public, me.username or "aiquizlybot"),
+            f"🔗 <code>{share_link}</code>\n\n"
+            "Set tanlang:",
+            reply_markup=set_select_keyboard(sets, quiz_id),
             parse_mode="HTML",
         )
     except Exception as e:
