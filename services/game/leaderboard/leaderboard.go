@@ -59,7 +59,12 @@ func (s *Service) AddScore(ctx context.Context, userID string, score float64) er
 
 // GetTopN — eng yaxshi N ta o'yinchini qaytaradi
 func (s *Service) GetTopN(ctx context.Context, period, periodKey string, n int) ([]LeaderboardEntry, error) {
-	key := fmt.Sprintf("leaderboard:%s:%s", period, periodKey)
+	var key string
+	if periodKey == "alltime" {
+		key = "leaderboard:alltime"
+	} else {
+		key = fmt.Sprintf("leaderboard:%s:%s", period, periodKey)
+	}
 
 	results, err := s.redis.ZRevRangeWithScores(ctx, key, 0, int64(n-1)).Result()
 	if err != nil {
@@ -84,7 +89,12 @@ func (s *Service) UpdateAll(ctx context.Context, userID uuid.UUID, score int, co
 
 // GetUserRank — foydalanuvchining reytingdagi o'rnini qaytaradi
 func (s *Service) GetUserRank(ctx context.Context, period, periodKey, userID string) (int64, float64, error) {
-	key := fmt.Sprintf("leaderboard:%s:%s", period, periodKey)
+	var key string
+	if periodKey == "alltime" {
+		key = "leaderboard:alltime"
+	} else {
+		key = fmt.Sprintf("leaderboard:%s:%s", period, periodKey)
+	}
 
 	rank, err := s.redis.ZRevRank(ctx, key, userID).Result()
 	if err != nil {

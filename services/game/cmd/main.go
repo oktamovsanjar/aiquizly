@@ -221,35 +221,39 @@ func main() {
 	r.Route("/leaderboard", func(r chi.Router) {
 		r.Get("/{period}", func(w http.ResponseWriter, r *http.Request) {
 			period := chi.URLParam(r, "period")
-			periodKey := r.URL.Query().Get("key")
-			if periodKey == "" {
-				now := time.Now()
-				switch period {
-				case "daily":
-					periodKey = now.Format("2006-01-02")
-				case "weekly":
-					year, week := now.ISOWeek()
-					periodKey = fmt.Sprintf("%d-W%02d", year, week)
-				case "monthly":
-					periodKey = now.Format("2006-01")
-				default:
-					periodKey = "alltime"
+			now := time.Now()
+			var periodKey string
+			switch period {
+			case "daily":
+				periodKey = now.Format("2006-01-02")
+			case "weekly":
+				year, week := now.ISOWeek()
+				periodKey = fmt.Sprintf("%d-W%02d", year, week)
+			case "monthly":
+				periodKey = now.Format("2006-01")
+			default:
+				period = "all"
+				periodKey = "alltime"
+			}
+
+			limitStr := r.URL.Query().Get("limit")
+			limit := 50
+			if limitStr != "" {
+				if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+					limit = n
 				}
 			}
 
-			top, err := queries.GetLeaderboard(r.Context(), period, periodKey, 50)
+			entries, err := lbService.GetTopN(r.Context(), period, periodKey, limit)
 			if err != nil {
 				logger.Error("leaderboard olish xatosi", zap.Error(err))
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"error": "ichki xato"})
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ichki xato"})
 				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"period":     period,
 				"period_key": periodKey,
-				"entries":    top,
+				"entries":    entries,
 			})
 		})
 	})

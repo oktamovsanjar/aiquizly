@@ -660,6 +660,11 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		achSlugs[i] = a.AchievementSlug
 	}
 
+	// Leaderboard yangilash — totalXP asosida
+	if err := h.lb.UpdateAll(ctx, game.UserID, totalXP, totalCorrect, totalGames, accuracy); err != nil {
+		h.log.Warn("leaderboard yangilanmadi", zap.Error(err))
+	}
+
 	writeJSON(w, http.StatusOK, finishGameResponse{
 		Score:           finalScore,
 		Correct:         game.CorrectAnswers,
