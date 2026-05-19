@@ -55,6 +55,7 @@ const QuizlyAdminApp = () => {
   const onLogout = () => {
     try { localStorage.removeItem('admin_token'); } catch {}
     setAuth(false);
+    store.set(s => ({ ...s, _loaded: false, _loading: false }));
   };
 
   if (!auth) {
