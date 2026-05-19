@@ -137,7 +137,7 @@ async def group_settings(message: Message, state: FSMContext) -> None:
     await state.update_data(settings_chat_id=message.chat.id)
 
 
-@router.callback_query(QuizStates.TG_GROUP_SETTINGS, F.data.startswith("tg:who:"))
+@router.callback_query(F.data.startswith("tg:who:"))
 async def set_who_can_start(cb: CallbackQuery, state: FSMContext) -> None:
     who = cb.data.split(":")[2]
     data = await state.get_data()
@@ -160,14 +160,14 @@ async def set_who_can_start(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer("✅ Saqlandi")
 
 
-@router.callback_query(QuizStates.TG_GROUP_SETTINGS, F.data == "tg:save_settings")
+@router.callback_query(F.data == "tg:save_settings")
 async def save_settings(cb: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await cb.message.edit_text("✅ Sozlamalar saqlandi.")
     await cb.answer()
 
 
-@router.callback_query(QuizStates.TG_GROUP_SETTINGS, F.data == "tg:manage_quizzes")
+@router.callback_query(F.data == "tg:manage_quizzes")
 async def settings_manage_quizzes(
     cb: CallbackQuery, state: FSMContext, bot: Bot
 ) -> None:

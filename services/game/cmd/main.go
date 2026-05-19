@@ -165,13 +165,13 @@ func main() {
 			default:
 				periodKey = "alltime"
 			}
-			rank, total, err := queries.GetUserRank(r.Context(), userID, period, periodKey)
+			rank, score, err := lbService.GetUserRank(r.Context(), period, periodKey, userID.String())
 			if err != nil {
 				writeJSON(w, http.StatusOK, map[string]interface{}{"rank": 0, "total": 0})
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"rank": rank, "total": total})
+			json.NewEncoder(w).Encode(map[string]interface{}{"rank": rank, "total": int(score)})
 		})
 
 		r.Post("/xp", func(w http.ResponseWriter, r *http.Request) {

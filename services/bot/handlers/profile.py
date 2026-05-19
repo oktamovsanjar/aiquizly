@@ -486,3 +486,65 @@ async def referral_via_callback(cb: CallbackQuery) -> None:
         text, reply_markup=referral_keyboard(bot_info.username, user_id)
     )
     await cb.answer()
+
+
+# ─────────────────────────── Sozlamalar ───────────────────────────
+
+@router.callback_query(F.data == "prof:settings")
+async def show_settings(cb: CallbackQuery) -> None:
+    """Foydalanuvchi sozlamalari — til va quiz sozlamalari."""
+    from utils.user_settings import get_user_settings
+    from keyboards.language import language_keyboard
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    user_id = cb.from_user.id
+    saved = await get_user_settings(user_id)
+
+    time_sec = saved.get("time_sec", 30)
+    shuffle_q = saved.get("shuffle_questions", True)
+    shuffle_o = saved.get("shuffle_options", True)
+
+    sq = "✅" if shuffle_q else "❌"
+    so = "✅" if shuffle_o else "❌"
+
+    text = (
+        "⚙️ <b>Sozlamalar</b>\n\n"
+        f"⏱ Savol vaqti: <b>{time_sec} soniya</b>\n"
+        f"🔀 Savollar aralash: <b>{sq}</b>\n"
+        f"🔀 Variantlar aralash: <b>{so}</b>\n\n"
+        "<i>Vaqt va aralash sozlamalari quiz boshlanishida o'zgartiriladi.</i>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇺🇿 O'zbek", callback_data="set:lang:uz"),
+            InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set:lang:ru"),
+            InlineKeyboardButton(text="🇬🇧 English", callback_data="set:lang:en"),
+        ],
+        [InlineKeyboardButton(text="◀ Orqaga", callback_data="prof:view")],
+    ])
+    await cb.message.edit_text(text, reply_markup=kb)
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("set:lang:"))
+async def set_language(cb: CallbackQuery, state) -> None:
+    """Tilni o'zgartirish."""
+    from db import AsyncSessionLocal
+    from db.models import User
+    from sqlalchemy import update
+    from keyboards.main_menu import main_menu_keyboard
+
+    lang = cb.data.split(":")[2]
+    lang_names = {"uz": "🇺🇿 O'zbek", "ru": "🇷🇺 Русский", "en": "🇬🇧 English"}
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(User)
+            .where(User.telegram_id == cb.from_user.id)
+            .values(language_code=lang)
+        )
+        await session.commit()
+
+    await state.update_data(language_code=lang)
+    await cb.answer(f"Til o'zgartirildi: {lang_names.get(lang, lang)}", show_alert=True)
+    await show_settings(cb)
