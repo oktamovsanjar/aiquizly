@@ -250,6 +250,22 @@ async def handle_document(message: Message, state: FSMContext) -> None:
 
         if result.get("status") == "already_processed":
             quiz_id = result.get("quiz_id")
+
+            # quiz_id None bo'lsa — user ning quizlaridan shu fayl nomiga mos qidiramiz
+            if not quiz_id:
+                try:
+                    data_q = await ai_engine_client().get_quizzes(
+                        user_id=message.from_user.id
+                    )
+                    quizzes = data_q.get("quizzes", []) if isinstance(data_q, dict) else []
+                    file_title = doc.file_name.rsplit(".", 1)[0]
+                    for q in quizzes:
+                        if q.get("title", "").strip() == file_title.strip():
+                            quiz_id = q.get("id") or q.get("quiz_id")
+                            break
+                except Exception:
+                    pass
+
             await state.update_data(
                 reprocess_file_url=file_url,
                 reprocess_file_name=doc.file_name,
@@ -259,7 +275,7 @@ async def handle_document(message: Message, state: FSMContext) -> None:
                 inline_keyboard=[
                     [InlineKeyboardButton(text="🔄 Qayta tahlil qilish", callback_data="up:reprocess")],
                     *(
-                        [[InlineKeyboardButton(text="📋 Mavjud quizni ko'rish", callback_data=f"up:existing:{quiz_id}")]]
+                        [[InlineKeyboardButton(text="▶️ Mavjud quizni boshlash", callback_data=f"up:existing:{quiz_id}")]]
                         if quiz_id
                         else []
                     ),
