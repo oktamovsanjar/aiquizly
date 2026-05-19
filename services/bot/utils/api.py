@@ -334,15 +334,12 @@ class AIEngineClient:
         quiz_id: str,
         set_number: int,
     ) -> list[dict[str, Any]]:
-        async def _fetch():
-            resp = await self._http.get(
-                f"/quizzes/{quiz_id}/sets/{set_number}/questions"
-            )
-            _raise_for_service("ai-engine", resp)
-            data = resp.json()
-            return data if isinstance(data, list) else data.get("questions", [])
-
-        return await _cached(f"qset:{quiz_id}:{set_number}", ttl=60, coro=_fetch)
+        resp = await self._http.get(
+            f"/quizzes/{quiz_id}/sets/{set_number}/questions"
+        )
+        _raise_for_service("ai-engine", resp)
+        data = resp.json()
+        return data if isinstance(data, list) else data.get("questions", [])
 
     async def save_quiz(
         self,

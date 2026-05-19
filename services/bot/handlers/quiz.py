@@ -816,8 +816,13 @@ async def _auto_advance(
     idx = data.get("current_q_index", 1) - 1
     skip_count = data.get("skip_count", 0) + 1
     skipped = data.get("skipped", 0) + 1
+    # Javobsiz savolni ham "qayta ishlash" ro'yxatiga qo'shamiz
+    wrong_q_ids = data.get("wrong_question_ids", [])
+    if idx >= 0 and idx not in wrong_q_ids:
+        wrong_q_ids = wrong_q_ids + [idx]
     await state.update_data(
-        skipped=skipped, skip_count=skip_count, current_poll_id=None
+        skipped=skipped, skip_count=skip_count, current_poll_id=None,
+        wrong_question_ids=wrong_q_ids,
     )
 
     # Game servisga skip yuborish
@@ -1092,7 +1097,7 @@ async def _show_results(
         quiz_id=quiz_id,
         set_number=set_number,
         next_set=next_set,
-        has_wrong=wrong > 0,
+        has_wrong=wrong > 0 or skipped > 0,
         time_sec=time_sec,
         bot_username=bot_username,
     )

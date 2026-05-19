@@ -22,7 +22,7 @@ from aiogram.types import (
 
 from fsm.states import QuizStates
 from keyboards.inline import quiz_done_with_review_keyboard
-from utils.api import ai_engine_client
+from utils.api import ai_engine_client, subscription_client
 from utils.i18n import t
 from utils.task_tracker import save_pending_task, remove_pending_task
 from redis_client import get_redis
@@ -321,6 +321,11 @@ async def handle_document(message: Message, state: FSMContext) -> None:
             f"🤖 AI savol ajratmoqda...\n📄 {doc.file_name}\n\nNatija tayyor bo'lgach xabar keladi ✉️"
         )
         await state.clear()
+        # Foydalanish limitini oshirish
+        try:
+            await subscription_client().increment_usage(message.from_user.id)
+        except Exception:
+            pass
 
         # Background polling — Redis da saqlanadi, restart da tiklanadi
         me = await message.bot.get_me()
