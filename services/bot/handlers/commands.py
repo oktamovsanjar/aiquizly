@@ -59,9 +59,9 @@ async def menu_button_in_state(message: Message, state: FSMContext) -> None:
         await state.set_state(QuizStates.SEARCHING)
         await message.answer("🔍 Qidiring yoki teg tanlang:\n\nYoki matn yozing...")
     elif text in {"🏆 Reyting", "🏆 Рейтинг", "🏆 Leaderboard"}:
-        from keyboards.inline import leaderboard_tabs_keyboard
+        from handlers.profile import show_leaderboard
 
-        await message.answer("🏆 Reyting:", reply_markup=leaderboard_tabs_keyboard())
+        await show_leaderboard(message)
     elif text in {"👤 Profil", "👤 Профиль", "👤 Profile"}:
         from handlers.profile import show_profile
 
