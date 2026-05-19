@@ -169,9 +169,20 @@ class GameClient:
         async def _fetch():
             resp = await self._http.get(f"/leaderboard/{period}", params=params)
             _raise_for_service("game", resp)
-            return resp.json()
+            data = resp.json()
+            # Bo'sh natijani cache ga olmaymiz
+            if not data.get("entries"):
+                return data
+            return data
 
-        return await _cached(f"lb:{period}:{tag}:{limit}", ttl=30, coro=_fetch)
+        cache_key = f"lb:{period}:{tag}:{limit}"
+        # Cache da bo'sh natija bo'lsa — yangidan so'raymiz
+        cached = _cache.get(cache_key)
+        if cached and cached[1].get("entries"):
+            import time as _time
+            if _time.monotonic() < cached[0]:
+                return cached[1]
+        return await _cached(cache_key, ttl=30, coro=_fetch)
 
     async def get_user_rank(self, user_id: int, period: str = "all") -> dict[str, Any]:
         async def _fetch():

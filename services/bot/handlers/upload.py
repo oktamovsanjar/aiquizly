@@ -301,19 +301,15 @@ async def handle_document(message: Message, state: FSMContext) -> None:
                 reprocess_file_name=doc.file_name,
                 reprocess_file_size=doc.file_size,
             )
-            kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Qayta tahlil qilish", callback_data="up:reprocess")],
-                    *(
-                        [[InlineKeyboardButton(text="▶️ Mavjud quizni boshlash", callback_data=f"up:existing:{quiz_id}")]]
-                        if quiz_id
-                        else []
-                    ),
-                ]
-            )
+            kb_rows = []
+            if quiz_id:
+                kb_rows.append([InlineKeyboardButton(text="▶️ Quizni boshlash", callback_data=f"up:existing:{quiz_id}")])
+            kb_rows.append([InlineKeyboardButton(text="🔄 Qaytadan tahlil qilish", callback_data="up:reprocess")])
+
             await progress_msg.edit_text(
-                "ℹ️ Bu fayl avval tahlil qilingan.\nQayta tahlil qilishni xohlaysizmi?",
-                reply_markup=kb,
+                f"✅ <b>{doc.file_name}</b>\n\nBu fayl avval tahlil qilingan — quiz tayyor!",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows),
+                parse_mode="HTML",
             )
             return
 
