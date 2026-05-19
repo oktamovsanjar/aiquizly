@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import re
 from typing import List, Dict, Any, Tuple
 
 from openai import AsyncOpenAI
@@ -19,36 +18,6 @@ def _merge_stats(a: Dict[str, int], b: Dict[str, int]) -> Dict[str, int]:
     return {k: a.get(k, 0) + b.get(k, 0) for k in set(a) | set(b)}
 
 
-def _repair_truncated_json(raw: str) -> List[Dict[str, Any]]:
-    """
-    Truncated JSON dan to'liq savollarni regex orqali tiklash.
-    DeepSeek javobni kesib tashlaganda bu funksiya ishlatiladi.
-    AI prompt format: {"question": "...", "options": [...], "correct_index": N}
-    """
-    pattern = re.compile(
-        r'\{\s*"question"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,'
-        r'\s*"options"\s*:\s*\[((?:[^\[\]]|\[(?:[^\[\]])*\])*)\]\s*,'
-        r'\s*"correct_index"\s*:\s*(\d+)',
-        re.DOTALL,
-    )
-    results = []
-    for m in pattern.finditer(raw):
-        try:
-            q_text = m.group(1).replace('\\"', '"')
-            opts_raw = "[" + m.group(2) + "]"
-            options = json.loads(opts_raw)
-            correct = int(m.group(3))
-            if isinstance(options, list) and len(options) >= 2:
-                results.append(
-                    {
-                        "question": q_text,
-                        "options": options,
-                        "correct_index": correct,
-                    }
-                )
-        except Exception:
-            continue
-    return results
 
 
 class AIStructurer:
@@ -127,22 +96,13 @@ class AIStructurer:
                     ),
                 )
                 raw = response.choices[0].message.content
-                finish_reason = response.choices[0].finish_reason
-                truncated = finish_reason == "length"
-                if truncated:
-                    logger.warning(
-                        "Batch %d truncated (finish_reason=length), regex fallback",
-                        batch_idx,
-                    )
+                if response.choices[0].finish_reason == "length":
+                    logger.warning("Batch %d truncated — chunk_size kichiklashtirilishi kerak", batch_idx)
 
                 questions = self._parse_response(raw)
                 validated, stats = validate_questions(questions)
                 if validated:
                     return validated, stats
-                # Truncated bo'lsa va savol topilmasa — qayta urinish befoyda
-                if truncated:
-                    logger.warning("Batch %d truncated va savol topilmadi, retry o'tkazib yuborildi", batch_idx)
-                    return [], {}
 
             except Exception as e:
                 logger.warning(
@@ -167,9 +127,5 @@ class AIStructurer:
                 return []
             return json.loads(raw)
         except json.JSONDecodeError:
-            # Truncated JSON — regex bilan tiklash
-            logger.warning("JSON parse xatosi, regex fallback ishlatilmoqda")
-            repaired = _repair_truncated_json(raw)
-            if repaired:
-                logger.info("Regex fallback: %d savol tiklandi", len(repaired))
-            return repaired
+            logger.warning("JSON parse xatosi — AI javobi to'liq emas")
+            return []
