@@ -1,8 +1,11 @@
 """Profil, reyting va referal handlerlari."""
 
 import asyncio
+import logging
 
 from aiogram import Router, F
+
+logger = logging.getLogger(__name__)
 from aiogram.filters import Command
 from aiogram.types import (
     CallbackQuery,
@@ -338,21 +341,18 @@ async def _send_leaderboard(
 
     user_tg_id = caller_id or (message.from_user.id if message.from_user else None)
 
+    entries, rank_data = [], None
     try:
-        lb_coro = game_client().get_leaderboard(period=api_period, limit=10)
-        rank_coro = (
-            game_client().get_user_rank(user_tg_id, period=api_period)
-            if user_tg_id
-            else None
-        )
-        if rank_coro:
-            lb_data, rank_data = await asyncio.gather(lb_coro, rank_coro)
-        else:
-            lb_data = await lb_coro
+        lb_data = await game_client().get_leaderboard(period=api_period, limit=10)
+        entries = lb_data.get("entries") or []
+    except Exception as e:
+        logger.warning("leaderboard olishda xato: %s", e)
+
+    if user_tg_id:
+        try:
+            rank_data = await game_client().get_user_rank(user_tg_id, period=api_period)
+        except Exception:
             rank_data = None
-        entries = lb_data.get("entries", [])
-    except Exception:
-        entries, rank_data = [], None
 
     # UUID → user ma'lumotlari (first_name, username, telegram_id)
     user_info: dict = {}
