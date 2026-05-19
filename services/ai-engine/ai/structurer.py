@@ -117,6 +117,13 @@ class AIStructurer:
 
     def _parse_response(self, raw: str) -> List[Dict[str, Any]]:
         raw = raw.strip()
+
+        # Markdown code block tozalash
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:]).strip()
+
+        # To'liq JSON parse
         try:
             if raw.startswith("{"):
                 data = json.loads(raw)
@@ -126,5 +133,22 @@ class AIStructurer:
                 return []
             return json.loads(raw)
         except json.JSONDecodeError:
-            logger.warning("JSON parse xatosi — AI javobi to'liq emas")
-            return []
+            pass
+
+        # Truncated JSON — to'liq ob'ektlarni regex bilan qutqarish
+        import re
+        questions = []
+        for m in re.finditer(r'\{[^{}]*"question"\s*:[^{}]*\}', raw, re.DOTALL):
+            try:
+                obj = json.loads(m.group())
+                if "question" in obj and "options" in obj:
+                    questions.append(obj)
+            except json.JSONDecodeError:
+                continue
+
+        if questions:
+            logger.warning("Truncated JSON — %d savol regex bilan tiklandi", len(questions))
+            return questions
+
+        logger.warning("JSON parse muvaffaqiyatsiz: %s...", raw[:100])
+        return []
