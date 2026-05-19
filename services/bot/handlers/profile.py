@@ -393,11 +393,16 @@ async def _send_leaderboard(
             lines.append(f"{medal} <b>{name}</b> — {int(score)} XP{marker}")
         text = "\n".join(lines)
 
-    # O'z o'rni top-10 da bo'lmasa qo'shamiz
-    if rank_data and rank_data.get("rank") and rank_data["rank"] > 10:
-        rank = rank_data["rank"]
-        score = rank_data.get("total_score", rank_data.get("score", 0))
-        text += f"\n\n<i>Sizning o'rningiz: {rank}-o'rin — {score} ball</i>"
+    # O'z o'rni top-10 da bo'lmasa pastga qo'shamiz
+    if rank_data and rank_data.get("rank"):
+        my_rank = rank_data["rank"]
+        my_score = rank_data.get("total", rank_data.get("score", 0))
+        # Top-10 da bor-yo'qligini tekshir
+        in_top = any(info.get("telegram_id") == user_tg_id for info in user_info.values())
+        if not in_top and my_rank > 0:
+            text += f"\n\n👤 <b>Sizning o'rningiz: {my_rank}-o'rin</b>"
+            if my_score:
+                text += f" — {int(my_score)} XP"
 
     try:
         if edit:

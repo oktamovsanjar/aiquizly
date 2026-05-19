@@ -530,11 +530,13 @@ async def select_set(cb: CallbackQuery, state: FSMContext) -> None:
         await _start_quiz_from(cb, state, quiz_id, set_number, time_sec)
         return
 
+    from utils.user_settings import get_user_settings
     data = await state.get_data()
+    saved = await get_user_settings(cb.from_user.id)
     quiz_title = data.get("quiz_title", "Quiz")
-    shuffle_q = data.get("shuffle_questions", True)
-    shuffle_o = data.get("shuffle_options", True)
-    default_time = 30
+    shuffle_q = saved.get("shuffle_questions", data.get("shuffle_questions", True))
+    shuffle_o = saved.get("shuffle_options", data.get("shuffle_options", True))
+    default_time = saved.get("time_sec", 30)
 
     await asyncio.gather(
         state.update_data(quiz_id=quiz_id, set_number=set_number, time_sec=default_time),
@@ -562,7 +564,9 @@ async def select_time(cb: CallbackQuery, state: FSMContext) -> None:
     shuffle_q = data.get("shuffle_questions", True)
     shuffle_o = data.get("shuffle_options", True)
 
+    from utils.user_settings import update_user_setting
     await state.update_data(time_sec=time_sec)
+    await update_user_setting(cb.from_user.id, "time_sec", time_sec)
 
     await cb.message.edit_text(
         f"📋 <b>{quiz_title}</b> — Set {set_number}\n"
@@ -577,12 +581,14 @@ async def select_time(cb: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("qp:toggle_sq:"))
 async def toggle_shuffle_questions(cb: CallbackQuery, state: FSMContext) -> None:
+    from utils.user_settings import update_user_setting
     parts = cb.data.split(":")
     quiz_id, set_number, time_sec = parts[2], int(parts[3]), int(parts[4])
     data = await state.get_data()
     shuffle_q = not data.get("shuffle_questions", True)
     shuffle_o = data.get("shuffle_options", True)
     await state.update_data(shuffle_questions=shuffle_q)
+    await update_user_setting(cb.from_user.id, "shuffle_questions", shuffle_q)
     await cb.message.edit_reply_markup(
         reply_markup=quiz_start_keyboard(
             quiz_id, set_number, time_sec, shuffle_q, shuffle_o
@@ -593,12 +599,14 @@ async def toggle_shuffle_questions(cb: CallbackQuery, state: FSMContext) -> None
 
 @router.callback_query(F.data.startswith("qp:toggle_so:"))
 async def toggle_shuffle_options(cb: CallbackQuery, state: FSMContext) -> None:
+    from utils.user_settings import update_user_setting
     parts = cb.data.split(":")
     quiz_id, set_number, time_sec = parts[2], int(parts[3]), int(parts[4])
     data = await state.get_data()
     shuffle_q = data.get("shuffle_questions", True)
     shuffle_o = not data.get("shuffle_options", True)
     await state.update_data(shuffle_options=shuffle_o)
+    await update_user_setting(cb.from_user.id, "shuffle_options", shuffle_o)
     await cb.message.edit_reply_markup(
         reply_markup=quiz_start_keyboard(
             quiz_id, set_number, time_sec, shuffle_q, shuffle_o
@@ -618,11 +626,27 @@ async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
 
 async def _start_quiz_from(cb: CallbackQuery, state: FSMContext, quiz_id: str, set_number: int, time_sec: int) -> None:
     """Quiz boshlaydigan asosiy logika."""
+    from utils.user_settings import get_user_settings, save_user_settings
+    user_id = cb.from_user.id
+    # Oldingi sozlamalarni yuklash
+    saved = await get_user_settings(user_id)
+    # time_sec ni saqlangan default bilan almashtirish (agar "Yana bir marta" yoki set tanlov)
+    final_time = time_sec if time_sec != 30 else saved.get("time_sec", time_sec)
+    shuffle_q = saved.get("shuffle_questions", True)
+    shuffle_o = saved.get("shuffle_options", True)
+    # Yangi sozlamalarni saqlash
+    await save_user_settings(user_id, {
+        **saved,
+        "time_sec": final_time,
+        "shuffle_questions": shuffle_q,
+        "shuffle_options": shuffle_o,
+    })
+
     await state.set_state(QuizStates.QUIZ_PLAYING)
     await state.update_data(
         quiz_id=quiz_id,
         set_number=set_number,
-        time_sec=time_sec,
+        time_sec=final_time,
         current_q_index=0,
         skip_count=0,
         correct=0,
