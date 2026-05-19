@@ -542,8 +542,8 @@ async def select_time(cb: CallbackQuery, state: FSMContext) -> None:
 
     data = await state.get_data()
     quiz_title = data.get("quiz_title", "Quiz")
-    shuffle_q = data.get("shuffle_questions", False)
-    shuffle_o = data.get("shuffle_options", False)
+    shuffle_q = data.get("shuffle_questions", True)
+    shuffle_o = data.get("shuffle_options", True)
 
     await state.update_data(time_sec=time_sec)
 
@@ -563,8 +563,8 @@ async def toggle_shuffle_questions(cb: CallbackQuery, state: FSMContext) -> None
     parts = cb.data.split(":")
     quiz_id, set_number, time_sec = parts[2], int(parts[3]), int(parts[4])
     data = await state.get_data()
-    shuffle_q = not data.get("shuffle_questions", False)
-    shuffle_o = data.get("shuffle_options", False)
+    shuffle_q = not data.get("shuffle_questions", True)
+    shuffle_o = data.get("shuffle_options", True)
     await state.update_data(shuffle_questions=shuffle_q)
     await cb.message.edit_reply_markup(
         reply_markup=quiz_start_keyboard(
@@ -579,8 +579,8 @@ async def toggle_shuffle_options(cb: CallbackQuery, state: FSMContext) -> None:
     parts = cb.data.split(":")
     quiz_id, set_number, time_sec = parts[2], int(parts[3]), int(parts[4])
     data = await state.get_data()
-    shuffle_q = data.get("shuffle_questions", False)
-    shuffle_o = not data.get("shuffle_options", False)
+    shuffle_q = data.get("shuffle_questions", True)
+    shuffle_o = not data.get("shuffle_options", True)
     await state.update_data(shuffle_options=shuffle_o)
     await cb.message.edit_reply_markup(
         reply_markup=quiz_start_keyboard(
@@ -643,7 +643,7 @@ async def _start_quiz_from(cb: CallbackQuery, state: FSMContext, quiz_id: str, s
         return
 
     fsm_data = await state.get_data()
-    if fsm_data.get("shuffle_questions"):
+    if fsm_data.get("shuffle_questions", True):
         import random
 
         random.shuffle(questions)
@@ -690,7 +690,7 @@ async def _send_next_question(
     )
 
     # Options shuffle: indekslarni kuzatib boramiz
-    if data.get("shuffle_options") and len(options) > 1:
+    if data.get("shuffle_options", True) and len(options) > 1:
         import random
 
         indexed = list(enumerate(options))
@@ -978,8 +978,11 @@ async def _show_results(
 
     # Guard: ikki marta chaqirilishni oldini olish
     if data.get("_finishing"):
+        logger.warning("_show_results: _finishing=True, skip. user=%s", user_id)
         return
     await state.update_data(_finishing=True)
+    logger.info("_show_results: user=%s correct=%s wrong=%s total=%s",
+                user_id, data.get("correct"), data.get("wrong"), data.get("total"))
 
     correct = data.get("correct", 0)
     wrong = data.get("wrong", 0)
