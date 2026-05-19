@@ -23,31 +23,19 @@ celery_app.conf.task_track_started = True
 
 # ── DB engine singleton — worker process da bir marta yaratiladi ──────────────
 # har task uchun yangi engine/pool emas, bitta engine qayta ishlatiladi.
-_db_engine = None
-_AsyncSessionLocal = None
-
-
 def _get_session_factory():
-    """Worker process da birinchi chaqiriqda engine yaratadi, keyin qayta ishlatadi."""
-    global _db_engine, _AsyncSessionLocal
-    if _db_engine is None:
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
+    """Har asyncio.run() uchun yangi engine — loop muammosini oldini oladi."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
 
-        db_url = settings.database_url
-        if "postgresql://" in db_url and "asyncpg" not in db_url:
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
-        if db_url.startswith("postgres://"):
-            db_url = db_url.replace("postgres://", "postgresql+asyncpg://")
+    db_url = settings.database_url
+    if "postgresql://" in db_url and "asyncpg" not in db_url:
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+asyncpg://")
 
-        _db_engine = create_async_engine(
-            db_url, pool_size=5, max_overflow=2, echo=False
-        )
-        _AsyncSessionLocal = sessionmaker(
-            _db_engine, class_=AsyncSession, expire_on_commit=False
-        )
-        logger.info("DB engine yaratildi (worker singleton)")
-    return _AsyncSessionLocal
+    engine = create_async_engine(db_url, pool_size=3, max_overflow=1, echo=False)
+    return sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 @celery_app.task(bind=True, max_retries=3, name="process_file")
