@@ -29,9 +29,10 @@ type LeaderboardEntry struct {
 type RankChange struct {
 	OldRank  int64
 	NewRank  int64
-	InTop    bool // top N ga kirdi
+	InTop    bool // top N ga yangi kirdi
 	OutTop   bool // top N dan chiqdi
-	Demoted  bool // o'rni pasaydi (top N ichida)
+	Promoted bool // top N ichida o'rni oshdi
+	Demoted  bool // top N ichida o'rni pasaydi
 }
 
 type Service struct {
@@ -96,6 +97,7 @@ func (s *Service) UpdateAllAndCheck(ctx context.Context, userID uuid.UUID, total
 
 	change.InTop = !wasInTop && isInTop
 	change.OutTop = wasInTop && !isInTop
+	change.Promoted = wasInTop && isInTop && newRank < change.OldRank
 	change.Demoted = wasInTop && isInTop && newRank > change.OldRank
 
 	return change, nil

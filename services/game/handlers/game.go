@@ -713,6 +713,11 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 					"🎉 <b>Tabrik, %s!</b>\n\nSiz Top %d ga kirdingiz!\n🏆 Joriy o'rningiz: <b>%d-o'rin</b>\n⚡️ Jami XP: <b>%d</b>",
 					name, leaderboard.TopN, change.NewRank, totalXP,
 				)
+			} else if change.Promoted {
+				notifText = fmt.Sprintf(
+					"⬆️ <b>Tabrik, %s!</b>\n\nO'rningiz oshdi!\n\n%d-o'rin → <b>%d-o'rin</b> 🔥\n⚡️ Jami XP: <b>%d</b>",
+					name, change.OldRank, change.NewRank, totalXP,
+				)
 			} else if change.OutTop {
 				notifText = fmt.Sprintf(
 					"📉 <b>%s</b>, siz Top %d dan chiqdingiz.\n\nJoriy o'rningiz: <b>%d-o'rin</b>\nQaytib kirish uchun ko'proq quiz o'ynang! 💪",
