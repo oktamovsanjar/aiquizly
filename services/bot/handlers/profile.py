@@ -354,6 +354,24 @@ async def _send_leaderboard(
     except Exception:
         entries, rank_data = [], None
 
+    # UUID → user ma'lumotlari (first_name, username, telegram_id)
+    user_info: dict = {}
+    if entries:
+        from db import AsyncSessionLocal
+        from sqlalchemy import text as _text
+        uuid_list = [e.get("UserID") or e.get("user_id", "") for e in entries if e.get("UserID") or e.get("user_id")]
+        if uuid_list:
+            try:
+                async with AsyncSessionLocal() as session:
+                    rows = await session.execute(
+                        _text("SELECT id::text, telegram_id, first_name, username FROM users WHERE id = ANY(:ids)"),
+                        {"ids": uuid_list},
+                    )
+                    for row in rows.fetchall():
+                        user_info[row[0]] = {"telegram_id": row[1], "first_name": row[2], "username": row[3]}
+            except Exception:
+                pass
+
     medals = ["🥇", "🥈", "🥉"]
     if not entries:
         text = f"🏆 <b>Reyting — {period_label}</b>\n\n<i>Hozircha ma'lumot yo'q</i>"
@@ -361,17 +379,18 @@ async def _send_leaderboard(
         lines = [f"🏆 <b>Reyting — {period_label}</b>\n"]
         for i, e in enumerate(entries[:10]):
             medal = medals[i] if i < 3 else f"  {i + 1}."
+            uid = e.get("UserID") or e.get("user_id", "")
+            info = user_info.get(uid, {})
             name = (
-                e.get("username")
+                info.get("username") and f"@{info['username']}"
+                or info.get("first_name")
                 or e.get("first_name")
-                or f"User {e.get('user_id', '')}"
+                or f"User"
             )
-            score = e.get("total_score", e.get("score", 0))
-            xp = e.get("xp")
-            xp_str = f"  ·  {xp} XP" if xp else ""
-            # O'zini belgilash
-            marker = " 👈" if e.get("user_id") == user_tg_id else ""
-            lines.append(f"{medal} <b>{name}</b> — {score} ball{xp_str}{marker}")
+            tg_id = info.get("telegram_id")
+            score = e.get("Score", e.get("total_score", e.get("score", 0)))
+            marker = " 👈" if tg_id == user_tg_id else ""
+            lines.append(f"{medal} <b>{name}</b> — {int(score)} XP{marker}")
         text = "\n".join(lines)
 
     # O'z o'rni top-10 da bo'lmasa qo'shamiz
