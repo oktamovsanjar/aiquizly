@@ -618,10 +618,17 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("user stats yangilash xatosi", zap.Error(err))
 	}
 
-	// XP log yozish
+	// XP log yozish — to'g'rilik foiziga qarab asosiy XP
 	gameRef := game.ID
+	baseXPEarned := xpEarned - streakBonus - newStreak*scoring.StreakXPPerDay
+	if correctAnswers == totalQuestions {
+		baseXPEarned -= scoring.PerfectBonusXP
+	}
+	if baseXPEarned < 0 {
+		baseXPEarned = 0
+	}
 	xpLogs := []db.AddXPLogParams{
-		{UserID: game.UserID, Amount: scoring.BaseXP, Reason: "quiz_complete", ReferenceID: &gameRef},
+		{UserID: game.UserID, Amount: baseXPEarned, Reason: "quiz_complete", ReferenceID: &gameRef},
 	}
 	if correctAnswers == totalQuestions {
 		xpLogs = append(xpLogs, db.AddXPLogParams{

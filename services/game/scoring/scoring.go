@@ -10,14 +10,20 @@ const (
 )
 
 // CalculateXP — quiz natijasi bo'yicha XP hisoblaydi
+// Formula: base * (correct/total) + perfect_bonus + streak_bonus
 func CalculateXP(correct, total, streakDays int) int {
 	if correct < 0 || total <= 0 {
 		return 0
 	}
 
-	xp := BaseXP
+	// To'g'rilik foiziga qarab asosiy XP (min 1, max BaseXP)
+	accuracy := float64(correct) / float64(total)
+	xp := int(float64(BaseXP) * accuracy)
+	if xp < 1 && correct > 0 {
+		xp = 1
+	}
 
-	// 100% to'g'ri bo'lsa bonus
+	// 100% bonus
 	if correct == total {
 		xp += PerfectBonusXP
 	}
