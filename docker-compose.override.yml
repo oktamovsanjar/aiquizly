@@ -1,0 +1,92 @@
+version: "3.8"
+
+# Server uchun override — host PostgreSQL va Redis ishlatiladi
+
+x-host-gateway: &host-gateway
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+x-no-deps: &no-db-deps
+  depends_on: {}
+
+services:
+  postgres:
+    profiles: ["disabled"]
+
+  redis:
+    profiles: ["disabled"]
+
+  bot:
+    <<: [*host-gateway, *no-db-deps]
+    ports:
+      - "8010:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://quizly:P1l2a3y4%25@host.docker.internal:5432/quizly_bot
+      - REDIS_URL=redis://host.docker.internal:6379/3
+      - WEBHOOK_URL=https://aiquizly.uzbek-talim.uz
+      - GAME_SERVICE_URL=http://game:8081
+      - AI_ENGINE_URL=http://ai-engine:8002
+      - SUBSCRIPTION_URL=http://subscription:8003
+      - NOTIFIER_URL=http://notifier:8082
+      - BOT_PORT=8000
+
+  ai-engine:
+    <<: [*host-gateway, *no-db-deps]
+    ports:
+      - "8012:8002"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://quizly:P1l2a3y4%25@host.docker.internal:5432/quizly_bot
+      - REDIS_URL=redis://host.docker.internal:6379/4
+      - AI_ENGINE_PORT=8002
+
+  ai-worker:
+    <<: [*host-gateway, *no-db-deps]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://quizly:P1l2a3y4%25@host.docker.internal:5432/quizly_bot
+      - REDIS_URL=redis://host.docker.internal:6379/4
+      - PYTHONPATH=/app
+
+  game:
+    <<: [*host-gateway, *no-db-deps]
+    ports:
+      - "8011:8081"
+    environment:
+      - DATABASE_URL=postgres://quizly:P1l2a3y4%25@host.docker.internal:5432/quizly_bot
+      - REDIS_URL=redis://host.docker.internal:6379/5
+      - GAME_PORT=8081
+
+  subscription:
+    <<: [*host-gateway, *no-db-deps]
+    ports:
+      - "8013:8003"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://quizly:P1l2a3y4%25@host.docker.internal:5432/quizly_bot
+      - REDIS_URL=redis://host.docker.internal:6379/3
+      - SUBSCRIPTION_PORT=8003
+
+  admin-api:
+    <<: [*host-gateway, *no-db-deps]
+    ports:
+      - "8014:8004"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://quizly:P1l2a3y4%25@host.docker.internal:5432/quizly_bot
+      - REDIS_URL=redis://host.docker.internal:6379/3
+      - ADMIN_API_PORT=8004
+      - ADMIN_SECRET=P1l2a3y4%
+
+  notifier:
+    <<: [*host-gateway, *no-db-deps]
+    ports:
+      - "8015:8082"
+    environment:
+      - REDIS_URL=redis://host.docker.internal:6379/6
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+
+  gateway:
+    <<: [*host-gateway, *no-db-deps]
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_URL=redis://host.docker.internal:6379/0
+      - BOT_SERVICE_URL=http://bot:8000
+      - GAME_SERVICE_URL=http://game:8081
