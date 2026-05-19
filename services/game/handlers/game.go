@@ -173,9 +173,10 @@ func (h *GameHandler) GetGame(w http.ResponseWriter, r *http.Request) {
 
 type answerRequest struct {
 	// Bot formati
-	QuestionIndex int  `json:"question_index"` // savol indeksi (0-based)
-	ChosenOption  *int `json:"chosen_option"`  // tanlangan variant (nil = skip)
-	TimeTakenMs   int  `json:"time_taken_ms"`  // bot yuboradi
+	QuestionIndex int   `json:"question_index"`
+	ChosenOption  *int  `json:"chosen_option"`
+	TimeTakenMs   int   `json:"time_taken_ms"`
+	IsCorrect     *bool `json:"is_correct"` // bot tomonidan hisoblangan
 	// Yangi/eski format
 	QuestionID      string `json:"question_id"`
 	SelectedIndices []int  `json:"selected_indices"`
@@ -245,48 +246,44 @@ func (h *GameHandler) SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Savol ma'lumotlarini olish uchun questions jadvaliga murojaat (read-only)
-	// Game xizmati faqat o'z jadvallariga yozadi, lekin questions jadvalidan o'qishi mumkin
+	// Savol ma'lumotlarini olish
 	var correctIndices []int
-	var explanationPtr *string
+	var explanation string
 	var isCorrect bool
 
-	row := h.queries.Pool().QueryRow(r.Context(),
-		`SELECT correct_indices, explanation FROM questions WHERE id = $1`,
-		questionID,
-	)
-	err = row.Scan(&correctIndices, &explanationPtr)
-	if err != nil {
-		h.log.Error("savol ma'lumotlarini olish xatosi", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "savol topilmadi")
-		return
+	{
+		var explanationPtr *string
+		row := h.queries.Pool().QueryRow(r.Context(),
+			`SELECT correct_indices, explanation FROM questions WHERE id = $1`,
+			questionID,
+		)
+		if scanErr := row.Scan(&correctIndices, &explanationPtr); scanErr != nil {
+			h.log.Warn("savol topilmadi, bot javobini ishlatamiz", zap.Error(scanErr))
+			// Bot chosen_option yuborgan bo'lsa — to'g'ri/noto'g'ri ni botdan olamiz
+			if req.ChosenOption != nil && req.IsCorrect != nil {
+				isCorrect = *req.IsCorrect
+			}
+		} else {
+			if explanationPtr != nil {
+				explanation = *explanationPtr
+			}
+			isCorrect = indicesMatch(req.SelectedIndices, correctIndices)
+		}
 	}
-
-	explanation := ""
-	if explanationPtr != nil {
-		explanation = *explanationPtr
-	}
-
-	// To'g'rilikni tekshirish
-	isCorrect = indicesMatch(req.SelectedIndices, correctIndices)
 
 	isCorrectPtr := &isCorrect
-	if len(req.SelectedIndices) == 0 {
+	if len(req.SelectedIndices) == 0 && req.ChosenOption == nil {
 		isCorrectPtr = nil // skip
 	}
 
-	if err := h.queries.SaveAnswer(r.Context(), db.SaveAnswerParams{
+	_ = h.queries.SaveAnswer(r.Context(), db.SaveAnswerParams{
 		GameID:          gameID,
 		QuestionID:      questionID,
 		UserID:          game.UserID,
 		SelectedIndices: req.SelectedIndices,
 		IsCorrect:       isCorrectPtr,
 		TimeSpentMs:     req.TimeSpentMs,
-	}); err != nil {
-		h.log.Error("javob saqlash xatosi", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "javobni saqlab bo'lmadi")
-		return
-	}
+	})
 
 	// Game statistikasini yangilash
 	newCorrect := game.CorrectAnswers
@@ -311,7 +308,7 @@ func (h *GameHandler) SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 			int64(newTimeSpent*1000), int64(game.TotalQuestions*30000))
 	}
 
-	updateParams := db.UpdateGameParams{
+	if err := h.queries.UpdateGame(r.Context(), gameID, db.UpdateGameParams{
 		Status:               game.Status,
 		CurrentQuestionIndex: newIdx,
 		CorrectAnswers:       newCorrect,
@@ -321,18 +318,16 @@ func (h *GameHandler) SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 		TimeSpentSeconds:     newTimeSpent,
 		PausedAt:             game.PausedAt,
 		FinishedAt:           game.FinishedAt,
-	}
-	if err := h.queries.UpdateGame(r.Context(), gameID, updateParams); err != nil {
+	}); err != nil {
 		h.log.Error("game yangilash xatosi", zap.Error(err))
 	}
 
-	resp := answerResponse{
+	writeJSON(w, http.StatusOK, answerResponse{
 		IsCorrect:      isCorrect,
 		CorrectIndices: correctIndices,
 		Explanation:    explanation,
 		Score:          currentScore,
-	}
-	writeJSON(w, http.StatusOK, resp)
+	})
 }
 
 // --- PUT /games/{game_id}/pause ---

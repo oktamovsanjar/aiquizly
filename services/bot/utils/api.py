@@ -125,14 +125,18 @@ class GameClient:
         question_index: int,
         chosen_option: int | None,
         time_taken_ms: int,
+        is_correct: bool | None = None,
     ) -> dict[str, Any]:
+        body: dict = {
+            "question_index": question_index,
+            "chosen_option": chosen_option,
+            "time_taken_ms": time_taken_ms,
+        }
+        if is_correct is not None:
+            body["is_correct"] = is_correct
         resp = await self._http.put(
             f"/games/{game_id}/answer",
-            json={
-                "question_index": question_index,
-                "chosen_option": chosen_option,
-                "time_taken_ms": time_taken_ms,
-            },
+            json=body,
         )
         _raise_for_service("game", resp)
         return resp.json()
@@ -166,23 +170,9 @@ class GameClient:
         if tag:
             params["tag"] = tag
 
-        async def _fetch():
-            resp = await self._http.get(f"/leaderboard/{period}", params=params)
-            _raise_for_service("game", resp)
-            data = resp.json()
-            # Bo'sh natijani cache ga olmaymiz
-            if not data.get("entries"):
-                return data
-            return data
-
-        cache_key = f"lb:{period}:{tag}:{limit}"
-        # Cache da bo'sh natija bo'lsa — yangidan so'raymiz
-        cached = _cache.get(cache_key)
-        if cached and cached[1].get("entries"):
-            import time as _time
-            if _time.monotonic() < cached[0]:
-                return cached[1]
-        return await _cached(cache_key, ttl=30, coro=_fetch)
+        resp = await self._http.get(f"/leaderboard/{period}", params=params)
+        _raise_for_service("game", resp)
+        return resp.json()
 
     async def get_user_rank(self, user_id: int, period: str = "all") -> dict[str, Any]:
         async def _fetch():

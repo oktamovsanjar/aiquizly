@@ -911,6 +911,7 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext, bot: Bot) -
                 question_index=idx,
                 chosen_option=selected[0] if selected else None,
                 time_taken_ms=data.get("time_sec", 30) * 1000,
+                is_correct=is_correct,
             )
         except Exception:
             pass
