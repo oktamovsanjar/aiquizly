@@ -81,7 +81,7 @@ def process_file_task(
         raise self.retry(exc=exc, countdown=10)
 
 
-def _chunk_text(text: str, chunk_size: int = 3000, overlap: int = 200) -> list:
+def _chunk_text(text: str, chunk_size: int = 8000, overlap: int = 200) -> list:
     """Matnni teng bo'laklarga bo'ladi. AI har bir bo'lakdan savollarni o'zi ajratadi."""
     from dataclasses import dataclass, field
 

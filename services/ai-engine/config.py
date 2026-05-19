@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # AI sozlamalari
     ai_model_primary: str = os.getenv("AI_MODEL_PRIMARY", "deepseek-v4-flash")
     ai_model_fallback: str = os.getenv("AI_MODEL_FALLBACK", "deepseek-v4-pro")
-    ai_batch_size: int = 15
+    ai_batch_size: int = 1
     ai_max_retries: int = 3
     ai_max_concurrent: int = int(
         os.getenv("AI_MAX_CONCURRENT", "3")
