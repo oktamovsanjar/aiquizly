@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/quiz-bot/game/achievement"
 	"github.com/quiz-bot/game/db"
+	"github.com/quiz-bot/game/leaderboard"
 	"github.com/quiz-bot/game/scoring"
 	"github.com/quiz-bot/game/streak"
 	"go.uber.org/zap"
@@ -26,6 +28,8 @@ type GameHandler struct {
 // LeaderboardUpdater — leaderboard yangilash interfeysi
 type LeaderboardUpdater interface {
 	UpdateAll(ctx context.Context, userID uuid.UUID, score int, correct int, games int, accuracy float64) error
+	UpdateAllAndCheck(ctx context.Context, userID uuid.UUID, score int) (*leaderboard.RankChange, error)
+	PushNotification(ctx context.Context, telegramID int64, text string, buttons []leaderboard.InlineBtn) error
 }
 
 // NewGameHandler — GameHandler yaratadi
@@ -660,9 +664,44 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		achSlugs[i] = a.AchievementSlug
 	}
 
-	// Leaderboard yangilash — totalXP asosida
-	if err := h.lb.UpdateAll(ctx, game.UserID, totalXP, totalCorrect, totalGames, accuracy); err != nil {
+	// Leaderboard yangilash va reyting o'zgarishini tekshirish
+	change, err := h.lb.UpdateAllAndCheck(ctx, game.UserID, totalXP)
+	if err != nil {
 		h.log.Warn("leaderboard yangilanmadi", zap.Error(err))
+	}
+
+	// Reyting bildirishnomasi
+	if change != nil {
+		telegramID, firstName, tgErr := h.queries.GetTelegramIDByUUID(ctx, game.UserID)
+		if tgErr == nil && telegramID != 0 {
+			name := firstName
+			if name == "" {
+				name = "Siz"
+			}
+			var notifText string
+			if change.InTop {
+				notifText = fmt.Sprintf(
+					"🎉 <b>Tabrik, %s!</b>\n\nSiz Top %d ga kirdingiz!\n🏆 Joriy o'rningiz: <b>%d-o'rin</b>\n⚡️ Jami XP: <b>%d</b>",
+					name, leaderboard.TopN, change.NewRank, totalXP,
+				)
+			} else if change.OutTop {
+				notifText = fmt.Sprintf(
+					"📉 <b>%s</b>, siz Top %d dan chiqdingiz.\n\nJoriy o'rningiz: <b>%d-o'rin</b>\nQaytib kirish uchun ko'proq quiz o'ynang! 💪",
+					name, leaderboard.TopN, change.NewRank,
+				)
+			} else if change.Demoted && change.OldRank > 0 {
+				notifText = fmt.Sprintf(
+					"⬇️ <b>%s</b>, o'rningiz o'zgardi!\n\n%d-o'rin → <b>%d-o'rin</b>\nLiderlikni qayta qo'lga kiriting! 🔥",
+					name, change.OldRank, change.NewRank,
+				)
+			}
+			if notifText != "" {
+				buttons := []leaderboard.InlineBtn{{Text: "🏆 Reytingni ko'rish", URL: "https://t.me/aiquizlybot?start=top"}}
+				if pushErr := h.lb.PushNotification(ctx, telegramID, notifText, buttons); pushErr != nil {
+					h.log.Warn("reyting bildirish xatosi", zap.Error(pushErr))
+				}
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, finishGameResponse{

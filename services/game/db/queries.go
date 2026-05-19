@@ -462,6 +462,23 @@ func scanUserStats(row scanner) (*UserStats, error) {
 	return &s, nil
 }
 
+// GetTelegramIDByUUID — user UUID bo'yicha telegram_id va first_name ni oladi
+func (q *Queries) GetTelegramIDByUUID(ctx context.Context, userID uuid.UUID) (int64, string, error) {
+	var telegramID int64
+	var firstName string
+	err := q.pool.QueryRow(ctx,
+		`SELECT telegram_id, COALESCE(first_name, '') FROM users WHERE id = $1`,
+		userID,
+	).Scan(&telegramID, &firstName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, "", ErrNotFound
+		}
+		return 0, "", err
+	}
+	return telegramID, firstName, nil
+}
+
 // GetUserUUIDByTelegramID — telegram_id bo'yicha user UUID ni oladi
 func (q *Queries) GetUserUUIDByTelegramID(ctx context.Context, telegramID int64) (uuid.UUID, error) {
 	var id uuid.UUID

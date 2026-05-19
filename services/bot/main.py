@@ -17,6 +17,7 @@ from handlers import router
 from handlers.quiz import on_poll_answer
 from middlewares.subscription import SubscriptionMiddleware
 from utils.admin_notify import notify_bot_started
+from utils.scheduler import setup_scheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -189,6 +190,17 @@ async def async_main() -> None:
         on_poll_answer
     )  # aiogram 3.7: sub-router poll_answer dp ga o'tmaydi
     dp.message.middleware(SubscriptionMiddleware())
+
+    # Scheduler — kunlik bildirishnomalar
+    try:
+        import redis.asyncio as aioredis
+        from db import AsyncSessionLocal
+        redis_client = aioredis.from_url(redis_url, decode_responses=True)
+        scheduler = setup_scheduler(bot, AsyncSessionLocal, redis_client)
+        scheduler.start()
+        logger.info("Scheduler ishga tushdi")
+    except Exception as e:
+        logger.warning("Scheduler ishga tushmadi: %s", e)
 
     try:
         await _setup_bot_settings(bot)
