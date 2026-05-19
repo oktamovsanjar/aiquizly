@@ -79,7 +79,7 @@ services:
     ports:
       - "8015:8082"
     environment:
-      - REDIS_URL=redis://host.docker.internal:6379/6
+      - REDIS_URL=redis://host.docker.internal:6379/5
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
 
   gateway:
