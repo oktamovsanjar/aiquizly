@@ -123,10 +123,11 @@ async def _poll_until_done(
                     f"⚠️ {warnings['many_options']} ta savolda 4 dan ko'p variant"
                 )
 
+            share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
             labels = {
-                "uz": f"✅ Quiz tayyor!\n📄 <b>{file_name}</b>\n📊 {total_q} ta savol topildi.",
-                "ru": f"✅ Квиз готов!\n📄 <b>{file_name}</b>\n📊 Найдено вопросов: {total_q}.",
-                "en": f"✅ Quiz ready!\n📄 <b>{file_name}</b>\n📊 {total_q} questions found.",
+                "uz": f"✅ Quiz tayyor!\n📄 <b>{file_name}</b>\n📊 {total_q} ta savol topildi.\n\n🔗 <code>{share_link}</code>",
+                "ru": f"✅ Квиз готов!\n📄 <b>{file_name}</b>\n📊 Найдено вопросов: {total_q}.\n\n🔗 <code>{share_link}</code>",
+                "en": f"✅ Quiz ready!\n📄 <b>{file_name}</b>\n📊 {total_q} questions found.\n\n🔗 <code>{share_link}</code>",
             }
             text = labels.get(lang, labels["uz"])
             if warn_lines:
@@ -379,14 +380,21 @@ async def cb_existing_quiz(callback: CallbackQuery, state: FSMContext) -> None:
     try:
         quiz = await _ai().get_quiz(quiz_id)
         title = quiz.get("title", "Quiz")
+        total_q = quiz.get("total_questions", 0)
+        set_size = 20
+        num_sets = max(1, (total_q + set_size - 1) // set_size) if total_q else 1
         is_public = quiz.get("visibility", "private") == "public"
         me = await callback.bot.get_me()
+        share_link = f"https://t.me/{me.username}?start=quiz_{quiz_id}"
         await callback.message.edit_text(
-            f"📋 <b>{title}</b>",
+            f"📋 <b>{title}</b>\n"
+            f"📏 {total_q} savol | {num_sets} set\n\n"
+            f"🔗 <code>{share_link}</code>",
             reply_markup=quiz_manage_keyboard(quiz_id, is_public, me.username or "aiquizlybot"),
             parse_mode="HTML",
         )
-    except Exception:
+    except Exception as e:
+        logger.error("cb_existing_quiz xatosi: %s", e, exc_info=True)
         await callback.message.edit_text(
             "Quiz topilmadi.", reply_markup=_create_keyboard()
         )
