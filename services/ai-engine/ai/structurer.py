@@ -90,7 +90,6 @@ class AIStructurer:
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
-                    max_tokens=8000,  # truncation oldini olish
                     response_format=(
                         {"type": "json_object"} if supports_json_format else None
                     ),
