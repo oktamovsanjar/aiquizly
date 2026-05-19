@@ -520,15 +520,21 @@ async def select_set(cb: CallbackQuery, state: FSMContext) -> None:
         return
 
     data = await state.get_data()
-    lang = data.get("language_code", "uz")
+    quiz_title = data.get("quiz_title", "Quiz")
+    shuffle_q = data.get("shuffle_questions", True)
+    shuffle_o = data.get("shuffle_options", True)
+    default_time = 30
+
     await asyncio.gather(
-        state.update_data(quiz_id=quiz_id, set_number=set_number, time_sec=30),
+        state.update_data(quiz_id=quiz_id, set_number=set_number, time_sec=default_time),
         state.set_state(QuizStates.QUIZ_SETUP),
     )
 
     await cb.message.edit_text(
-        t("quiz_select_time", lang),
-        reply_markup=time_select_keyboard(quiz_id, set_number),
+        f"📋 <b>{quiz_title}</b> — Set {set_number}\n"
+        f"⏱ Har savol: {default_time} soniya\n\n"
+        "Tayyormisiz?",
+        reply_markup=quiz_start_keyboard(quiz_id, set_number, default_time, shuffle_q, shuffle_o),
     )
     await cb.answer()
 
