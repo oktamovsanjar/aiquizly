@@ -5,6 +5,7 @@ import os
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import (
     BotCommand,
     BotCommandScopeDefault,
@@ -178,7 +179,10 @@ async def _setup_bot_settings(bot: Bot) -> None:
 
 async def async_main() -> None:
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher()
+
+    redis_url = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/3")
+    storage = RedisStorage.from_url(redis_url)
+    dp = Dispatcher(storage=storage)
 
     dp.include_router(router)
     dp.poll_answer.register(
