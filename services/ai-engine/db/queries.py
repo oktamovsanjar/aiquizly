@@ -26,6 +26,7 @@ async def create_import_log(
 ) -> ImportLog:
     """Creates a new import_log record with status='processing'."""
     log = ImportLog(
+        id=uuid.uuid4(),
         user_id=uuid.UUID(user_id) if user_id else None,
         file_name=file_name,
         file_hash=file_hash,
@@ -35,7 +36,6 @@ async def create_import_log(
     )
     session.add(log)
     await session.flush()
-    await session.refresh(log)
     return log
 
 
@@ -98,6 +98,7 @@ async def create_quiz(
 ) -> Quiz:
     """Creates a new quiz record."""
     quiz = Quiz(
+        id=uuid.uuid4(),
         owner_id=uuid.UUID(owner_id),
         quiz_group_id=uuid.UUID(quiz_group_id) if quiz_group_id else None,
         title=title,
@@ -105,8 +106,6 @@ async def create_quiz(
         visibility="private",
     )
     session.add(quiz)
-    await session.flush()
-    await session.refresh(quiz)
     return quiz
 
 
@@ -187,12 +186,10 @@ async def create_questions(
         objs.append(obj)
         session.add(obj)
 
+    # Update quiz total_questions count — flush keyin execute
     await session.flush()
-
-    # Update quiz total_questions count
     stmt = update(Quiz).where(Quiz.id == quiz_id).values(total_questions=len(objs))
     await session.execute(stmt)
-
     return objs
 
 
@@ -243,7 +240,6 @@ async def create_quiz_sets(
         sets.append(qs)
         session.add(qs)
 
-    await session.flush()
     return sets
 
 
@@ -277,11 +273,9 @@ async def get_or_create_tags(session: AsyncSession, tag_slugs: List[str]) -> Lis
         if slug in existing:
             tag = existing[slug]
         else:
-            # Derive a display name from slug
             name = slug.replace("_", " ").title()
-            tag = Tag(name=name, slug=slug, usage_count=0)
+            tag = Tag(id=uuid.uuid4(), name=name, slug=slug, usage_count=0)
             session.add(tag)
-            await session.flush()
         tags.append(tag)
 
     return tags
@@ -301,7 +295,6 @@ async def attach_tags_to_quiz(
             update(Tag).where(Tag.id == tag_id).values(usage_count=Tag.usage_count + 1)
         )
         await session.execute(stmt)
-    await session.flush()
 
 
 async def get_trending_tags(session: AsyncSession, limit: int = 10) -> List[Tag]:
