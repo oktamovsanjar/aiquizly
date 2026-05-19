@@ -513,6 +513,11 @@ async def select_set(cb: CallbackQuery, state: FSMContext) -> None:
     parts = cb.data.split(":")
     quiz_id = parts[2]
     set_number = int(parts[3])
+    # 5-qism bo'lsa — vaqt ham berilgan, to'g'ridan boshlash
+    if len(parts) >= 5:
+        time_sec = int(parts[4])
+        await _start_quiz_from(cb, state, quiz_id, set_number, time_sec)
+        return
 
     data = await state.get_data()
     lang = data.get("language_code", "uz")
@@ -591,10 +596,11 @@ async def toggle_shuffle_options(cb: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.startswith("qp:start:"))
 async def start_quiz(cb: CallbackQuery, state: FSMContext) -> None:
     parts = cb.data.split(":")
-    quiz_id = parts[2]
-    set_number = int(parts[3])
-    time_sec = int(parts[4])
+    await _start_quiz_from(cb, state, parts[2], int(parts[3]), int(parts[4]))
 
+
+async def _start_quiz_from(cb: CallbackQuery, state: FSMContext, quiz_id: str, set_number: int, time_sec: int) -> None:
+    """Quiz boshlaydigan asosiy logika."""
     await state.set_state(QuizStates.QUIZ_PLAYING)
     await state.update_data(
         quiz_id=quiz_id,

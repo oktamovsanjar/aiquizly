@@ -290,6 +290,15 @@ def quiz_result_keyboard(
             ]
         )
 
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🔄 Yana bir marta",
+                callback_data=f"qp:set:{quiz_id}:{set_number}:{time_sec}",
+            )
+        ]
+    )
+
     if has_wrong:
         rows.append(
             [
@@ -313,7 +322,7 @@ def quiz_result_keyboard(
         [
             InlineKeyboardButton(
                 text="📤 Quizni ulashish",
-                switch_inline_query=share_link,
+                url=share_link,
             )
         ]
     )
@@ -531,7 +540,7 @@ def referral_keyboard(bot_username: str, user_id: int) -> InlineKeyboardMarkup:
     link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     return _kb(
         [
-            InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=link),
+            InlineKeyboardButton(text="📤 Ulashish", url=link),
         ],
         [InlineKeyboardButton(text="📋 Link nusxalash", callback_data="ref:copy")],
         [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
