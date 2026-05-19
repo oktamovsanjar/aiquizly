@@ -785,10 +785,14 @@ async def _send_next_question(bot: Bot, chat_id: int) -> None:
         options = raw_q["options"]
         correct = raw_q["correct"]
 
+    # Telegram cheklovi: savol max 300, variant max 100 belgi
+    poll_question = f"❓ {idx + 1}/{q_count}: {q_text}"[:300]
+    poll_options = [str(o)[:100] for o in options]
+
     sent = await bot.send_poll(
         chat_id=chat_id,
-        question=f"❓ {idx + 1}/{q_count}: {q_text}",
-        options=options,
+        question=poll_question,
+        options=poll_options,
         type="quiz",
         correct_option_id=correct,
         is_anonymous=False,
