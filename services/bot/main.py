@@ -18,6 +18,7 @@ from handlers.quiz import on_poll_answer
 from middlewares.subscription import SubscriptionMiddleware
 from utils.admin_notify import notify_bot_started
 from utils.scheduler import setup_scheduler
+from utils.task_tracker import restore_pending_tasks
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ async def async_main() -> None:
     )  # aiogram 3.7: sub-router poll_answer dp ga o'tmaydi
     dp.message.middleware(SubscriptionMiddleware())
 
-    # Scheduler — kunlik bildirishnomalar
+    # Scheduler va Redis
     try:
         import redis.asyncio as aioredis
         from db import AsyncSessionLocal
@@ -199,8 +200,10 @@ async def async_main() -> None:
         scheduler = setup_scheduler(bot, AsyncSessionLocal, redis_client)
         scheduler.start()
         logger.info("Scheduler ishga tushdi")
+        # Restart da pending upload tasklarni tiklash
+        await restore_pending_tasks(bot, redis_client)
     except Exception as e:
-        logger.warning("Scheduler ishga tushmadi: %s", e)
+        logger.warning("Scheduler/restore ishga tushmadi: %s", e)
 
     try:
         await _setup_bot_settings(bot)

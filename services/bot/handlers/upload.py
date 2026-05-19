@@ -24,6 +24,8 @@ from fsm.states import QuizStates
 from keyboards.inline import quiz_done_with_review_keyboard
 from utils.api import ai_engine_client
 from utils.i18n import t
+from utils.task_tracker import save_pending_task, remove_pending_task
+from redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -71,6 +73,34 @@ async def _poll_until_done(
     lang: str,
     progress_msg_id: int,
     bot_username: str = "aiquizlybot",
+    redis_client=None,
+) -> None:
+    # Redis da saqlash — restart da tiklansin
+    if redis_client:
+        try:
+            await save_pending_task(redis_client, task_id, chat_id, user_id,
+                                    file_name, lang, progress_msg_id, bot_username)
+        except Exception:
+            pass
+    try:
+        await _do_poll(bot, chat_id, task_id, file_name, lang, progress_msg_id, bot_username)
+    finally:
+        # Task tugagach (yoki xato) Redis dan o'chirish
+        if redis_client:
+            try:
+                await remove_pending_task(redis_client, task_id)
+            except Exception:
+                pass
+
+
+async def _do_poll(
+    bot: Bot,
+    chat_id: int,
+    task_id: str,
+    file_name: str,
+    lang: str,
+    progress_msg_id: int,
+    bot_username: str,
 ) -> None:
     loop = asyncio.get_running_loop()
     start = loop.time()
@@ -296,7 +326,7 @@ async def handle_document(message: Message, state: FSMContext) -> None:
         )
         await state.clear()
 
-        # Background polling — state endi kerak emas
+        # Background polling — Redis da saqlanadi, restart da tiklanadi
         me = await message.bot.get_me()
         asyncio.create_task(
             _poll_until_done(
@@ -308,6 +338,7 @@ async def handle_document(message: Message, state: FSMContext) -> None:
                 lang=lang,
                 progress_msg_id=progress_msg.message_id,
                 bot_username=me.username or "aiquizlybot",
+                redis_client=get_redis(),
             )
         )
 
@@ -376,6 +407,7 @@ async def cb_reprocess(callback: CallbackQuery, state: FSMContext) -> None:
                 lang=lang,
                 progress_msg_id=progress_msg.message_id,
                 bot_username=me.username or "aiquizlybot",
+                redis_client=get_redis(),
             )
         )
     except Exception as e:
@@ -467,6 +499,7 @@ async def cb_images_done(callback: CallbackQuery, state: FSMContext) -> None:
                 file_name="rasmlar",
                 lang=lang,
                 bot_username=me.username or "aiquizlybot",
+                redis_client=get_redis(),
             )
         )
 
