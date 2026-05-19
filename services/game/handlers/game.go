@@ -736,6 +736,39 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+
+		// TOP-N dagi boshqa userlar o'rin tushsa bildirishnoma
+		buttons := []leaderboard.InlineBtn{{Text: "🏆 Reytingni ko'rish", URL: "https://t.me/aiquizlybot?start=top"}}
+		for _, oc := range change.OtherChanges {
+			otherUID, parseErr := uuid.Parse(oc.UserID)
+			if parseErr != nil {
+				continue
+			}
+			otherTgID, otherName, otherErr := h.queries.GetTelegramIDByUUID(ctx, otherUID)
+			if otherErr != nil || otherTgID == 0 {
+				continue
+			}
+			if otherName == "" {
+				otherName = "Siz"
+			}
+			var otherText string
+			wasInTop := oc.OldRank > 0 && oc.OldRank <= leaderboard.TopN
+			isNowInTop := oc.NewRank <= leaderboard.TopN
+			if wasInTop && !isNowInTop {
+				otherText = fmt.Sprintf(
+					"📉 <b>%s</b>, siz Top %d dan chiqdingiz.\n\nJoriy o'rningiz: <b>%d-o'rin</b>\nQaytib kirish uchun ko'proq quiz o'ynang! 💪",
+					otherName, leaderboard.TopN, oc.NewRank,
+				)
+			} else if wasInTop && isNowInTop && oc.NewRank > oc.OldRank {
+				otherText = fmt.Sprintf(
+					"⬇️ <b>%s</b>, o'rningiz o'zgardi!\n\n%d-o'rin → <b>%d-o'rin</b>\nLiderlikni qayta qo'lga kiriting! 🔥",
+					otherName, oc.OldRank, oc.NewRank,
+				)
+			}
+			if otherText != "" {
+				_ = h.lb.PushNotification(ctx, otherTgID, otherText, buttons)
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, finishGameResponse{

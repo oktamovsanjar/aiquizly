@@ -25,14 +25,22 @@ type LeaderboardEntry struct {
 	Rank   int64
 }
 
+// OtherRankChange — boshqa userning o'rin o'zgarishi
+type OtherRankChange struct {
+	UserID  string
+	OldRank int64
+	NewRank int64
+}
+
 // RankChange — o'rin o'zgarishi natijasi
 type RankChange struct {
-	OldRank  int64
-	NewRank  int64
-	InTop    bool // top N ga yangi kirdi
-	OutTop   bool // top N dan chiqdi
-	Promoted bool // top N ichida o'rni oshdi
-	Demoted  bool // top N ichida o'rni pasaydi
+	OldRank      int64
+	NewRank      int64
+	InTop        bool // top N ga yangi kirdi
+	OutTop       bool // top N dan chiqdi
+	Promoted     bool // top N ichida o'rni oshdi
+	Demoted      bool // top N ichida o'rni pasaydi
+	OtherChanges []OtherRankChange // top N dagi boshqa userlar o'zgarishi
 }
 
 type Service struct {
@@ -67,38 +75,66 @@ func (s *Service) AddScore(ctx context.Context, userID string, totalXP float64, 
 	return err
 }
 
-// UpdateAllAndCheck — ballarni yangilaydi va reyting o'zgarishini qaytaradi
+// TopNSnapshot — leaderboard oldini snapshot sifatida saqlaydi
+// key: userID, value: rank
+func (s *Service) GetTopSnapshot(ctx context.Context, n int) (map[string]int64, error) {
+	results, err := s.redis.ZRevRangeWithScores(ctx, "leaderboard:alltime", 0, int64(n-1)).Result()
+	if err != nil {
+		return nil, err
+	}
+	snap := make(map[string]int64, len(results))
+	for i, r := range results {
+		snap[r.Member.(string)] = int64(i + 1)
+	}
+	return snap, nil
+}
+
+// UpdateAllAndCheck — ballarni yangilaydi, joriy user + TOP-N dagi boshqa userlar o'zgarishini qaytaradi
 func (s *Service) UpdateAllAndCheck(ctx context.Context, userID uuid.UUID, totalXP int, sessionXP int) (*RankChange, error) {
 	uid := userID.String()
 
-	// Yangilashdan oldingi o'rinni olish
-	oldRank, _, oldErr := s.GetUserRank(ctx, "all", "alltime", uid)
+	// Yangilashdan oldingi snapshot (TOP-N+2, chegarani kengaytirish uchun)
+	oldSnap, _ := s.GetTopSnapshot(ctx, TopN+2)
 
 	if err := s.AddScore(ctx, uid, float64(totalXP), float64(sessionXP)); err != nil {
 		return nil, err
 	}
 
-	// Yangi o'rinni olish
+	// Yangi snapshot
+	newSnap, _ := s.GetTopSnapshot(ctx, TopN+2)
+
+	// Joriy user o'zgarishi
+	oldRank := oldSnap[uid]
 	newRank, _, newErr := s.GetUserRank(ctx, "all", "alltime", uid)
 	if newErr != nil {
 		return nil, nil
 	}
 
-	change := &RankChange{NewRank: newRank}
-	if oldErr == nil {
-		change.OldRank = oldRank
-	} else {
-		change.OldRank = 0 // yangi foydalanuvchi
-	}
-
-	// O'zgarishlarni aniqlash
-	wasInTop := change.OldRank > 0 && change.OldRank <= TopN
+	change := &RankChange{OldRank: oldRank, NewRank: newRank}
+	wasInTop := oldRank > 0 && oldRank <= TopN
 	isInTop := newRank <= TopN
-
 	change.InTop = !wasInTop && isInTop
 	change.OutTop = wasInTop && !isInTop
-	change.Promoted = wasInTop && isInTop && newRank < change.OldRank
-	change.Demoted = wasInTop && isInTop && newRank > change.OldRank
+	change.Promoted = wasInTop && isInTop && newRank < oldRank
+	change.Demoted = wasInTop && isInTop && newRank > oldRank
+
+	// TOP-N dagi boshqa userlar o'zgarishi
+	for otherUID, oldR := range oldSnap {
+		if otherUID == uid {
+			continue
+		}
+		newR, exists := newSnap[otherUID]
+		if !exists {
+			newR = TopN + 1 // top dan chiqdi
+		}
+		if oldR != newR {
+			change.OtherChanges = append(change.OtherChanges, OtherRankChange{
+				UserID:  otherUID,
+				OldRank: oldR,
+				NewRank: newR,
+			})
+		}
+	}
 
 	return change, nil
 }
