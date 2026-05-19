@@ -11,6 +11,7 @@ from keyboards.main_menu import main_menu_keyboard
 from keyboards.language import language_keyboard
 from utils.admin_notify import notify_new_user
 from utils.i18n import t
+from utils.api import ai_engine_client
 
 router = Router()
 
@@ -270,6 +271,41 @@ def _welcome_back_text(lang: str, name: str | None) -> str:
     return t("welcome_back", lang, name=name or "")
 
 
+async def _suggest_top_quiz(message: Message, lang: str) -> None:
+    """Yangi user uchun bugungi eng mashhur quizni taklif qiladi."""
+    try:
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        data = await ai_engine_client().get_quizzes(public=True, page_size=5)
+        quizzes = data.get("quizzes", []) if isinstance(data, dict) else []
+        if not quizzes:
+            return
+        # Eng ko'p o'ynalgan (play_count bo'yicha)
+        top = max(quizzes, key=lambda q: q.get("play_count", 0))
+        quiz_id = top.get("id", "")
+        title = top.get("title", "Quiz")[:40]
+        total_q = top.get("total_questions", 0)
+        play_count = top.get("play_count", 0)
+        if not quiz_id:
+            return
+
+        me = await message.bot.get_me()
+        link = f"https://t.me/{me.username}?start=quiz_{quiz_id}"
+
+        texts = {
+            "uz": f"🔥 <b>Bugungi mashhur quiz:</b>\n\n📋 <b>{title}</b>\n📊 {total_q} savol · {play_count} marta o'ynaldi\n\nHoziroq sinab ko'ring!",
+            "ru": f"🔥 <b>Популярный квиз сегодня:</b>\n\n📋 <b>{title}</b>\n📊 {total_q} вопросов · сыграно {play_count} раз\n\nПопробуйте сейчас!",
+            "en": f"🔥 <b>Today's popular quiz:</b>\n\n📋 <b>{title}</b>\n📊 {total_q} questions · played {play_count} times\n\nTry it now!",
+        }
+        btn_texts = {"uz": "▶️ O'ynash", "ru": "▶️ Играть", "en": "▶️ Play"}
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=btn_texts.get(lang, "▶️ O'ynash"), url=link)
+        ]])
+        await message.answer(texts.get(lang, texts["uz"]), reply_markup=kb)
+    except Exception:
+        pass
+
+
 @router.message(F.text.in_({"O'zbek", "Русский", "English"}))
 async def choose_language(message: Message, state: FSMContext) -> None:
     """Til tanlangandan keyin asosiy menyu"""
@@ -303,3 +339,6 @@ async def choose_language(message: Message, state: FSMContext) -> None:
         t("language_saved", lang),
         reply_markup=main_menu_keyboard(lang),
     )
+
+    # Yangi user uchun bugungi eng mashhur quizni taklif qilish
+    await _suggest_top_quiz(message, lang)
