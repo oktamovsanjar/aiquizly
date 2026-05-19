@@ -47,8 +47,8 @@ def _create_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def _done_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
-    return quiz_done_with_review_keyboard(quiz_id)
+def _done_keyboard(quiz_id: str, bot_username: str = "aiquizlybot") -> InlineKeyboardMarkup:
+    return quiz_done_with_review_keyboard(quiz_id, bot_username)
 
 
 async def _get_lang(state: FSMContext) -> str:
@@ -70,6 +70,7 @@ async def _poll_until_done(
     file_name: str,
     lang: str,
     progress_msg_id: int,
+    bot_username: str = "aiquizlybot",
 ) -> None:
     loop = asyncio.get_running_loop()
     start = loop.time()
@@ -136,14 +137,14 @@ async def _poll_until_done(
                     text,
                     chat_id=chat_id,
                     message_id=progress_msg_id,
-                    reply_markup=_done_keyboard(quiz_id),
+                    reply_markup=_done_keyboard(quiz_id, bot_username),
                 )
             except Exception:
                 # progress xabari o'chirilgan bo'lsa — yangi xabar yuboramiz
                 await bot.send_message(
                     chat_id,
                     text,
-                    reply_markup=_done_keyboard(quiz_id),
+                    reply_markup=_done_keyboard(quiz_id, bot_username),
                 )
             return
 
@@ -279,6 +280,7 @@ async def handle_document(message: Message, state: FSMContext) -> None:
         await state.clear()
 
         # Background polling — state endi kerak emas
+        me = await message.bot.get_me()
         asyncio.create_task(
             _poll_until_done(
                 bot=message.bot,
@@ -288,6 +290,7 @@ async def handle_document(message: Message, state: FSMContext) -> None:
                 file_name=doc.file_name,
                 lang=lang,
                 progress_msg_id=progress_msg.message_id,
+                bot_username=me.username or "aiquizlybot",
             )
         )
 
@@ -345,6 +348,7 @@ async def cb_reprocess(callback: CallbackQuery, state: FSMContext) -> None:
             f"🤖 AI savol ajratmoqda...\n📄 {file_name}\n\nNatija tayyor bo'lgach xabar keladi ✉️"
         )
         await state.clear()
+        me = await callback.bot.get_me()
         asyncio.create_task(
             _poll_until_done(
                 bot=callback.bot,
@@ -354,6 +358,7 @@ async def cb_reprocess(callback: CallbackQuery, state: FSMContext) -> None:
                 file_name=file_name,
                 lang=lang,
                 progress_msg_id=progress_msg.message_id,
+                bot_username=me.username or "aiquizlybot",
             )
         )
     except Exception as e:
@@ -418,6 +423,7 @@ async def cb_images_done(callback: CallbackQuery, state: FSMContext) -> None:
         )
         await state.clear()
 
+        me = await callback.bot.get_me()
         asyncio.create_task(
             _poll_until_done(
                 bot=callback.bot,
@@ -426,6 +432,7 @@ async def cb_images_done(callback: CallbackQuery, state: FSMContext) -> None:
                 task_id=task_id,
                 file_name="rasmlar",
                 lang=lang,
+                bot_username=me.username or "aiquizlybot",
             )
         )
 

@@ -707,10 +707,12 @@ def review_delete_confirm_keyboard(q_idx: int) -> InlineKeyboardMarkup:
     )
 
 
-def quiz_done_with_review_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
+def quiz_done_with_review_keyboard(quiz_id: str, bot_username: str = "aiquizlybot") -> InlineKeyboardMarkup:
     """Quiz tayyor bo'lganda ko'rsatiladigan tugmalar."""
+    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
     return _kb(
         [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:play:{quiz_id}")],
+        [InlineKeyboardButton(text="🔗 Ulashish", url=share_link)],
         [
             InlineKeyboardButton(
                 text="📝 Tahrirlash", callback_data=f"rev:start:{quiz_id}"
