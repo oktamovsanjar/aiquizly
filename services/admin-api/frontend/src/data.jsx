@@ -323,12 +323,73 @@ const store = createStore({
   growth30: GROWTH_30,
   revenue30: REVENUE_30,
   importBreakdown: IMPORT_BREAKDOWN,
+  _loading: false,
+  _loaded: false,
 });
 
 const useStore = (selector = (s) => s) =>
   React.useSyncExternalStore(store.subscribe, () => selector(store.get()));
 
+// ---- Real API loader -------------------------------------------------------
+const API_BASE = window.location.origin + '/admin';
+
+async function apiFetch(path) {
+  const token = localStorage.getItem('admin_token') || '';
+  const res = await fetch(API_BASE + path, {
+    headers: { 'X-Admin-Token': token },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${path}`);
+  return res.json();
+}
+
+async function loadRealData() {
+  if (store.get()._loading || store.get()._loaded) return;
+  store.set(s => ({ ...s, _loading: true }));
+  try {
+    const [overview, growth, imports, users, quizzes, settings, admins] = await Promise.allSettled([
+      apiFetch('/analytics/overview'),
+      apiFetch('/analytics/growth?days=30'),
+      apiFetch('/analytics/imports'),
+      apiFetch('/users?limit=100&offset=0'),
+      apiFetch('/quizzes?limit=100&offset=0'),
+      apiFetch('/settings'),
+      apiFetch('/admins'),
+    ]);
+
+    const updates = {};
+
+    if (overview.status === 'fulfilled') updates.overview = overview.value;
+
+    if (growth.status === 'fulfilled' && growth.value.data) {
+      updates.growth30 = growth.value.data.map(d => ({
+        date: d.date,
+        new_users: d.new_users,
+        new_quizzes: d.new_quizzes,
+      }));
+    }
+
+    if (imports.status === 'fulfilled') updates.importBreakdown = imports.value.breakdown || [];
+
+    if (users.status === 'fulfilled') {
+      const list = users.value.users || users.value || [];
+      if (list.length > 0) updates.users = list;
+    }
+
+    if (quizzes.status === 'fulfilled') {
+      const list = quizzes.value.quizzes || quizzes.value || [];
+      if (list.length > 0) updates.quizzes = list;
+    }
+
+    if (settings.status === 'fulfilled') updates.settings = settings.value;
+    if (admins.status === 'fulfilled') updates.admins = admins.value.admins || admins.value || [];
+
+    store.set(s => ({ ...s, ...updates, _loading: false, _loaded: true }));
+  } catch (e) {
+    store.set(s => ({ ...s, _loading: false }));
+  }
+}
+
 Object.assign(window, {
-  store, useStore,
+  store, useStore, loadRealData, apiFetch,
   formatUZS, formatNum, formatMs, formatDate, formatDateShort, formatRelative,
 });

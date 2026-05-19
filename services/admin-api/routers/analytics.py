@@ -15,7 +15,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 @router.get("/overview", dependencies=[Depends(require_auth)])
 async def overview(db: AsyncSession = Depends(get_db)):
     """Asosiy ko'rsatkichlar: foydalanuvchilar, quizlar, daromad."""
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     month_ago = now - timedelta(days=30)
     week_ago = now - timedelta(days=7)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)

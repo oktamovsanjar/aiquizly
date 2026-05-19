@@ -44,7 +44,14 @@ const QuizlyAdminApp = () => {
     }
     setAuth(true);
     navigate('/');
+    // Real API dan ma'lumot yuklash
+    setTimeout(() => loadRealData(), 100);
   };
+
+  // Sahifa ochilganda token mavjud bo'lsa — yuklash
+  React.useEffect(() => {
+    if (auth) loadRealData();
+  }, [auth]);
   const onLogout = () => {
     try { localStorage.removeItem('admin_token'); } catch {}
     setAuth(false);
