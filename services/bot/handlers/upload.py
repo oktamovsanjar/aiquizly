@@ -379,9 +379,11 @@ async def cb_existing_quiz(callback: CallbackQuery, state: FSMContext) -> None:
     try:
         quiz = await _ai().get_quiz(quiz_id)
         title = quiz.get("title", "Quiz")
+        is_public = quiz.get("visibility", "private") == "public"
+        me = await callback.bot.get_me()
         await callback.message.edit_text(
             f"📋 <b>{title}</b>",
-            reply_markup=quiz_manage_keyboard(quiz_id),
+            reply_markup=quiz_manage_keyboard(quiz_id, is_public, me.username or "aiquizlybot"),
             parse_mode="HTML",
         )
     except Exception:

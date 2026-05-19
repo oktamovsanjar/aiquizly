@@ -113,14 +113,14 @@ def my_quiz_list_keyboard(
 
 
 def quiz_manage_keyboard(
-    quiz_id: str, is_public: bool, bot_username: str = "aiquizaibot"
+    quiz_id: str, is_public: bool = False, bot_username: str = "aiquizlybot"
 ) -> InlineKeyboardMarkup:
     """Quiz boshqaruv menyusi: o'ynash, tahrirlash, ko'rinish, o'chirish."""
     vis_text = "🔒 Yopiq qilish" if is_public else "🌐 Ochiq qilish"
     share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
     return _kb(
         [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:quiz:{quiz_id}")],
-        [InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=share_link)],
+        [InlineKeyboardButton(text="🔗 Ulashish", url=share_link)],
         [
             InlineKeyboardButton(
                 text="📝 Savollarni tahrirlash", callback_data=f"rev:start:{quiz_id}"
