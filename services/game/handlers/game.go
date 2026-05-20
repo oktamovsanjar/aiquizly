@@ -554,12 +554,20 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		newStreak = 0
 	}
 
-	// XP hisoblash (bot yuborgan to'g'ri qiymatlar ishlatiladi)
-	xpEarned := scoring.CalculateXP(correctAnswers, totalQuestions, newStreak)
+	// Bugun shu set uchun XP olganmi?
+	alreadyEarned, _ := h.queries.HasEarnedXPToday(ctx, game.UserID, game.QuizSetID)
 
-	// Streak milestone bonusi
-	streakBonus := streak.ShouldAwardStreakBonus(newStreak)
-	xpEarned += streakBonus
+	// XP hisoblash (bot yuborgan to'g'ri qiymatlar ishlatiladi)
+	xpEarned := 0
+	streakBonus := 0
+	if !alreadyEarned {
+		xpEarned = scoring.CalculateXP(correctAnswers, totalQuestions, newStreak)
+		streakBonus = streak.ShouldAwardStreakBonus(newStreak)
+		xpEarned += streakBonus
+	} else {
+		// XP berilmaydi, lekin streak bonusini bekor qilamiz
+		newStreak = 0
+	}
 
 	// UserStats olish va yangilash
 	stats, err := h.queries.GetUserStats(ctx, game.UserID)
@@ -618,7 +626,7 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("user stats yangilash xatosi", zap.Error(err))
 	}
 
-	// XP log yozish — to'g'rilik foiziga qarab asosiy XP
+	// XP log yozish — faqat birinchi marta (alreadyEarned=false)
 	gameRef := game.ID
 	baseXPEarned := xpEarned - streakBonus - newStreak*scoring.StreakXPPerDay
 	if correctAnswers == totalQuestions {
@@ -646,9 +654,11 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 			Reason: "streak", ReferenceID: &gameRef,
 		})
 	}
-	for _, lp := range xpLogs {
-		if err := h.queries.AddXPLog(ctx, lp); err != nil {
-			h.log.Error("xp log yozish xatosi", zap.Error(err))
+	if !alreadyEarned {
+		for _, lp := range xpLogs {
+			if err := h.queries.AddXPLog(ctx, lp); err != nil {
+				h.log.Error("xp log yozish xatosi", zap.Error(err))
+			}
 		}
 	}
 

@@ -535,6 +535,28 @@ func (q *Queries) GetQuestionIDByIndex(ctx context.Context, quizSetID uuid.UUID,
 // ErrNotFound — ma'lumot topilmaganda qaytariladigan xato
 var ErrNotFound = fmt.Errorf("topilmadi")
 
+// HasEarnedXPToday — user bugun shu quiz_set_id uchun XP olganmi?
+func (q *Queries) HasEarnedXPToday(ctx context.Context, userID uuid.UUID, quizSetID uuid.UUID) (bool, error) {
+	var count int
+	err := q.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM xp_logs
+		WHERE user_id = $1
+		  AND reference_id IN (
+		      SELECT id FROM games
+		      WHERE user_id = $1
+		        AND quiz_set_id = $2
+		        AND status = 'completed'
+		  )
+		  AND reason = 'quiz_complete'
+		  AND created_at >= CURRENT_DATE
+	`, userID, quizSetID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // IsoWeek — hafta kaliti (2026-W20 formatida)
 func IsoWeek(t time.Time) string {
 	year, week := t.ISOWeek()
