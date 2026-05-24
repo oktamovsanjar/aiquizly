@@ -31,6 +31,8 @@ Har bir savol uchun:
 - correct_index: to'g'ri variant indeksi, 0 dan boshlanadi (integer, hech qachon null bo'lmasin)
 - explanation: matnda tushuntirish berilgan bo'lsa yoz, aks holda bo'sh string
 
+MUHIM: Har bir savolni FAQAT BIR MARTA qaytaR. Bir xil yoki juda o'xshash savol matnda ikki marta uchrasa — faqat bittasini ol, ikkinchisini o'tkazib yubor.
+
 Faqat JSON qaytaril: {{"questions": [...]}}
 Boshqa hech narsa yozma.
 

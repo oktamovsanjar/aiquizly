@@ -163,7 +163,8 @@ func (q *Queries) GetWrongAnswers(ctx context.Context, gameID uuid.UUID) ([]Answ
 // GetUserStats — foydalanuvchi statistikasini oladi
 func (q *Queries) GetUserStats(ctx context.Context, userID uuid.UUID) (*UserStats, error) {
 	query := `
-		SELECT id, user_id, total_xp, level, total_games, total_correct, total_wrong,
+		SELECT id, user_id, total_xp, level, COALESCE(level_num, 1),
+		       total_games, total_correct, total_wrong,
 		       accuracy, current_streak, longest_streak, last_played_at, updated_at
 		FROM user_stats WHERE user_id = $1`
 
@@ -180,13 +181,17 @@ func (q *Queries) GetUserStats(ctx context.Context, userID uuid.UUID) (*UserStat
 
 // UpsertUserStats — foydalanuvchi statistikasini yaratadi yoki yangilaydi
 func (q *Queries) UpsertUserStats(ctx context.Context, p UpsertUserStatsParams) error {
+	if p.LevelNum < 1 {
+		p.LevelNum = 1
+	}
 	query := `
-		INSERT INTO user_stats (id, user_id, total_xp, level, total_games, total_correct, total_wrong,
+		INSERT INTO user_stats (id, user_id, total_xp, level, level_num, total_games, total_correct, total_wrong,
 		                        accuracy, current_streak, longest_streak, last_played_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
 		ON CONFLICT (user_id) DO UPDATE SET
 			total_xp       = EXCLUDED.total_xp,
 			level          = EXCLUDED.level,
+			level_num      = EXCLUDED.level_num,
 			total_games    = EXCLUDED.total_games,
 			total_correct  = EXCLUDED.total_correct,
 			total_wrong    = EXCLUDED.total_wrong,
@@ -197,7 +202,7 @@ func (q *Queries) UpsertUserStats(ctx context.Context, p UpsertUserStatsParams) 
 			updated_at     = now()`
 
 	_, err := q.pool.Exec(ctx, query,
-		p.UserID, p.TotalXP, p.Level, p.TotalGames,
+		p.UserID, p.TotalXP, p.Level, p.LevelNum, p.TotalGames,
 		p.TotalCorrect, p.TotalWrong, p.Accuracy,
 		p.CurrentStreak, p.LongestStreak, p.LastPlayedAt,
 	)
@@ -306,6 +311,28 @@ func (q *Queries) UpsertLeaderboard(ctx context.Context, p UpsertLeaderboardPara
 		p.TotalGames, p.TotalCorrect, p.TotalScore, p.Accuracy,
 	)
 	return err
+}
+
+// GetPerfectScoreCount — foydalanuvchining mukammal natijalari soni
+func (q *Queries) GetPerfectScoreCount(ctx context.Context, userID uuid.UUID) (int, error) {
+	var count int
+	err := q.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM xp_logs
+		WHERE user_id = $1 AND reason = 'perfect_score'
+	`, userID).Scan(&count)
+	return count, err
+}
+
+// GetGamesInLast24h — oxirgi 24 soatda yakunlangan o'yinlar soni
+func (q *Queries) GetGamesInLast24h(ctx context.Context, userID uuid.UUID) (int, error) {
+	var count int
+	err := q.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM games
+		WHERE user_id = $1
+		  AND status = 'completed'
+		  AND finished_at >= now() - INTERVAL '24 hours'
+	`, userID).Scan(&count)
+	return count, err
 }
 
 // GetLeaderboard — reyting ro'yxatini oladi
@@ -451,7 +478,7 @@ func scanAnswer(row scanner) (*Answer, error) {
 func scanUserStats(row scanner) (*UserStats, error) {
 	var s UserStats
 	err := row.Scan(
-		&s.ID, &s.UserID, &s.TotalXP, &s.Level,
+		&s.ID, &s.UserID, &s.TotalXP, &s.Level, &s.LevelNum,
 		&s.TotalGames, &s.TotalCorrect, &s.TotalWrong, &s.Accuracy,
 		&s.CurrentStreak, &s.LongestStreak,
 		&s.LastPlayedAt, &s.UpdatedAt,
@@ -561,4 +588,31 @@ func (q *Queries) HasEarnedXPToday(ctx context.Context, userID uuid.UUID, quizSe
 func IsoWeek(t time.Time) string {
 	year, week := t.ISOWeek()
 	return fmt.Sprintf("%d-W%02d", year, week)
+}
+
+// UserXP — leaderboard rebuild uchun user UUID va XP
+type UserXP struct {
+	UserID uuid.UUID
+	TotalXP int
+}
+
+// GetAllUserXP — barcha userlarning UUID va XP sini qaytaradi
+func (q *Queries) GetAllUserXP(ctx context.Context) ([]UserXP, error) {
+	rows, err := q.pool.Query(ctx, `
+		SELECT user_id, total_xp FROM user_stats WHERE total_xp > 0
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []UserXP
+	for rows.Next() {
+		var u UserXP
+		if err := rows.Scan(&u.UserID, &u.TotalXP); err != nil {
+			return nil, err
+		}
+		result = append(result, u)
+	}
+	return result, rows.Err()
 }

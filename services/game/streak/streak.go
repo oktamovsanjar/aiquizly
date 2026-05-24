@@ -33,6 +33,7 @@ func UpdateStreak(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID) (in
 			UserID:        userID,
 			TotalXP:       0,
 			Level:         "beginner",
+			LevelNum:      1,
 			TotalGames:    0,
 			TotalCorrect:  0,
 			TotalWrong:    0,
@@ -78,6 +79,7 @@ func UpdateStreak(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID) (in
 		UserID:        userID,
 		TotalXP:       stats.TotalXP,
 		Level:         stats.Level,
+		LevelNum:      stats.LevelNum,
 		TotalGames:    stats.TotalGames,
 		TotalCorrect:  stats.TotalCorrect,
 		TotalWrong:    stats.TotalWrong,
@@ -94,15 +96,19 @@ func UpdateStreak(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID) (in
 }
 
 // ShouldAwardStreakBonus — milestone streak uchun XP bonusini qaytaradi
-// Milestone streaklar: 7, 14, 30 kun
+// Milestone streaklar: 7, 14, 30, 60, 100 kun (yangilangan — Faza 2)
 func ShouldAwardStreakBonus(streakDays int) int {
 	switch {
+	case streakDays == 100:
+		return 1000 // afsonaviy
+	case streakDays >= 60 && streakDays%60 == 0:
+		return 300
 	case streakDays >= 30 && streakDays%30 == 0:
-		return 100
+		return 150
 	case streakDays >= 14 && streakDays%14 == 0:
 		return 50
 	case streakDays >= 7 && streakDays%7 == 0:
-		return 25
+		return 20
 	default:
 		return 0
 	}

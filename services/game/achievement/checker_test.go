@@ -105,6 +105,7 @@ func TestPerfectScoreCondition(t *testing.T) {
 }
 
 func TestAcademicLevelCondition(t *testing.T) {
+	// Yangi 100-levelli tizimda academic_level = Lvl 100 ga yetish
 	cond := findCondition("academic_level")
 	if cond == nil {
 		t.Fatal("academic_level condition topilmadi")
@@ -113,18 +114,112 @@ func TestAcademicLevelCondition(t *testing.T) {
 	ctx := context.Background()
 	uid := uuid.New()
 
-	// Beginner level — shartni bajarmasligi kerak
-	stats := &db.UserStats{Level: "beginner"}
+	// Past XP — shartni bajarmasligi kerak
+	stats := &db.UserStats{TotalXP: 100, Level: "beginner"}
 	met, _ := cond.check(ctx, nil, uid, stats, "game_complete")
 	if met {
-		t.Errorf("beginner level uchun false kutilgan")
+		t.Errorf("100 XP uchun false kutilgan")
 	}
 
-	// Academic level — shartni bajarishi kerak
-	stats = &db.UserStats{Level: "academic"}
+	// 200k XP — Lvl 100 ga yetadi, shartni bajarishi kerak
+	stats = &db.UserStats{TotalXP: 200000, Level: "legend"}
 	met, _ = cond.check(ctx, nil, uid, stats, "game_complete")
 	if !met {
-		t.Errorf("academic level uchun true kutilgan")
+		t.Errorf("200k XP (Lvl 100) uchun true kutilgan")
+	}
+}
+
+func TestLevelMilestonesConditions(t *testing.T) {
+	ctx := context.Background()
+	uid := uuid.New()
+
+	cases := []struct {
+		slug     string
+		passXP   int
+		failXP   int
+	}{
+		{"level_10", 5000, 100},
+		{"level_25", 15000, 100},
+		{"level_50", 50000, 100},
+		{"level_75", 100000, 100},
+		{"level_100", 200000, 100},
+	}
+	for _, c := range cases {
+		cond := findCondition(c.slug)
+		if cond == nil {
+			t.Errorf("%s condition topilmadi", c.slug)
+			continue
+		}
+		met, _ := cond.check(ctx, nil, uid, &db.UserStats{TotalXP: c.passXP}, "game_complete")
+		if !met {
+			t.Errorf("%s: %d XP uchun true kutilgan", c.slug, c.passXP)
+		}
+		met, _ = cond.check(ctx, nil, uid, &db.UserStats{TotalXP: c.failXP}, "game_complete")
+		if met {
+			t.Errorf("%s: %d XP uchun false kutilgan", c.slug, c.failXP)
+		}
+	}
+}
+
+func TestStreakLadderConditions(t *testing.T) {
+	ctx := context.Background()
+	uid := uuid.New()
+
+	cases := []struct {
+		slug     string
+		passDays int
+		failDays int
+	}{
+		{"streak_3", 3, 2},
+		{"streak_14", 14, 13},
+		{"streak_30", 30, 29},
+		{"streak_100", 100, 99},
+	}
+	for _, c := range cases {
+		cond := findCondition(c.slug)
+		if cond == nil {
+			t.Errorf("%s condition topilmadi", c.slug)
+			continue
+		}
+		met, _ := cond.check(ctx, nil, uid, statsWithStreak(c.passDays), "game_complete")
+		if !met {
+			t.Errorf("%s: %d kun uchun true kutilgan", c.slug, c.passDays)
+		}
+		met, _ = cond.check(ctx, nil, uid, statsWithStreak(c.failDays), "game_complete")
+		if met {
+			t.Errorf("%s: %d kun uchun false kutilgan", c.slug, c.failDays)
+		}
+	}
+}
+
+func TestGamesLadderConditions(t *testing.T) {
+	ctx := context.Background()
+	uid := uuid.New()
+
+	cases := []struct {
+		slug   string
+		passN  int
+		failN  int
+	}{
+		{"games_10", 10, 9},
+		{"games_50", 50, 49},
+		{"games_100", 100, 99},
+		{"games_500", 500, 499},
+	}
+	for _, c := range cases {
+		cond := findCondition(c.slug)
+		if cond == nil {
+			t.Errorf("%s condition topilmadi", c.slug)
+			continue
+		}
+		met, _ := cond.check(ctx, nil, uid, statsWithGames(c.passN), "game_complete")
+		if !met {
+			t.Errorf("%s: %d o'yin uchun true kutilgan", c.slug, c.passN)
+		}
+		met, _ = cond.check(ctx, nil, uid, statsWithGames(c.failN), "game_complete")
+		if met {
+			t.Errorf("%s: %d o'yin uchun false kutilgan", c.slug, c.failN)
+		}
 	}
 }
 

@@ -54,6 +54,7 @@ services:
       - DATABASE_URL=postgres://quizly:P1l2a3y4%25@host.docker.internal:5432/quizly_bot
       - REDIS_URL=redis://host.docker.internal:6379/5
       - GAME_PORT=8081
+      - AI_ENGINE_URL=http://ai-engine:8002
 
   subscription:
     <<: [*host-gateway, *no-db-deps]

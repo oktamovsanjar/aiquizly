@@ -20,9 +20,10 @@ import (
 
 // GameHandler — game HTTP handlerlari
 type GameHandler struct {
-	queries *db.Queries
-	lb      LeaderboardUpdater
-	log     *zap.Logger
+	queries      *db.Queries
+	lb           LeaderboardUpdater
+	log          *zap.Logger
+	aiEngineURL  string
 }
 
 // LeaderboardUpdater — leaderboard yangilash interfeysi
@@ -33,8 +34,18 @@ type LeaderboardUpdater interface {
 }
 
 // NewGameHandler — GameHandler yaratadi
-func NewGameHandler(queries *db.Queries, lb LeaderboardUpdater, log *zap.Logger) *GameHandler {
-	return &GameHandler{queries: queries, lb: lb, log: log}
+func NewGameHandler(queries *db.Queries, lb LeaderboardUpdater, log *zap.Logger, aiEngineURL string) *GameHandler {
+	return &GameHandler{queries: queries, lb: lb, log: log, aiEngineURL: aiEngineURL}
+}
+
+func (h *GameHandler) incrementPlayCount(quizID uuid.UUID) {
+	url := fmt.Sprintf("%s/quizzes/%s/increment_play", h.aiEngineURL, quizID)
+	resp, err := http.Post(url, "application/json", nil)
+	if err != nil {
+		h.log.Warn("play_count yangilashda xato", zap.Error(err))
+		return
+	}
+	resp.Body.Close()
 }
 
 // --- POST /games ---
@@ -49,6 +60,7 @@ type createGameRequest struct {
 	Mode            string      `json:"mode"`
 	TimePerQuestion int         `json:"time_per_question"` // ignore, faqat ma'lumot
 	ChatID          interface{} `json:"chat_id"`           // ignore
+	IsRetry         bool        `json:"is_retry"`          // qayta urinish (XP berilmaydi)
 	// Eski format (to'g'ridan-to'g'ri UUID)
 	QuizSetID string `json:"quiz_set_id"`
 }
@@ -133,6 +145,7 @@ func (h *GameHandler) CreateGame(w http.ResponseWriter, r *http.Request) {
 		UserID:         userID,
 		Mode:           mode,
 		TotalQuestions: totalQuestions,
+		IsRetry:        req.IsRetry,
 	})
 	if err != nil {
 		h.log.Error("game yaratish xatosi", zap.Error(err))
@@ -464,13 +477,47 @@ func (h *GameHandler) StopGame(w http.ResponseWriter, r *http.Request) {
 
 // --- PUT /games/{game_id}/finish ---
 
+// AchievementInfo — natijada qaytariladigan to'liq yutuq ma'lumoti
+type AchievementInfo struct {
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+	XP   int    `json:"xp"`
+}
+
+// XPBreakdown — XP qaerdan kelganligi
+type XPBreakdown struct {
+	Base        int `json:"base"`
+	Perfect     int `json:"perfect"`
+	Speed       int `json:"speed"`
+	Streak      int `json:"streak"`
+	Milestone   int `json:"milestone"`
+	Achievement int `json:"achievement"`
+}
+
+// LevelProgressInfo — joriy daraja ichidagi progress
+type LevelProgressInfo struct {
+	CurrentXP int     `json:"current_xp"`
+	NeededXP  int     `json:"needed_xp"`
+	Ratio     float64 `json:"ratio"`
+	NextTier  string  `json:"next_tier"`
+}
+
 type finishGameResponse struct {
-	Score           int      `json:"score"`
-	Correct         int      `json:"correct"`
-	Wrong           int      `json:"wrong"`
-	Skipped         int      `json:"skipped"`
-	XPEarned        int      `json:"xp_earned"`
-	NewAchievements []string `json:"new_achievements"`
+	Score           int               `json:"score"`
+	Correct         int               `json:"correct"`
+	Wrong           int               `json:"wrong"`
+	Skipped         int               `json:"skipped"`
+	XPEarned        int               `json:"xp_earned"`
+	XPEligible      bool              `json:"xp_eligible"`
+	IsReplay        bool              `json:"is_replay"`
+	XPBreakdown     XPBreakdown       `json:"xp_breakdown"`
+	NewAchievements []AchievementInfo `json:"new_achievements"`
+	Level           int               `json:"level"`
+	LevelTier       string            `json:"level_tier"`
+	LevelUp         bool              `json:"level_up"`
+	LevelProgress   LevelProgressInfo `json:"level_progress"`
+	StreakDays      int               `json:"streak_days"`
 }
 
 func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
@@ -547,26 +594,74 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Streak yangilash
+	// play_count yangilash (async, bloklanmaydi)
+	go h.incrementPlayCount(game.QuizID)
+
+	// ─── Anti-cheat tekshirishlari ───────────────────────────────────
+	// 1) Replay tekshirish — bugun shu setni avval o'ynaganmi?
+	//    Ha bo'lsa: to'liq XP emas, 25% XP (o'rganish uchun mukofot, lekin cheat oldini olish)
+	alreadyEarned, ckErr := h.queries.HasEarnedXPToday(ctx, game.UserID, game.QuizSetID)
+	if ckErr != nil {
+		h.log.Warn("HasEarnedXPToday xatosi", zap.Error(ckErr))
+	}
+	isReplay := alreadyEarned // bugun allaqachon shu setni o'ynagan
+
+	// 2) Retry o'yini uchun XP yo'q
+	xpEligible := !game.IsRetry
+
+	// 3) Min-time per question — speedrun chitidan himoya
+	const minMsPerQuestion = 1500
+	avgMsPerQ := 0
+	if game.CurrentQuestionIndex > 0 {
+		avgMsPerQ = (game.TimeSpentSeconds * 1000) / game.CurrentQuestionIndex
+	}
+	if correctAnswers > 0 && avgMsPerQ > 0 && avgMsPerQ < minMsPerQuestion {
+		h.log.Warn("anti-cheat: speedrun shubhasi",
+			zap.String("user_id", game.UserID.String()),
+			zap.Int("avg_ms", avgMsPerQ),
+			zap.Int("correct", correctAnswers))
+		xpEligible = false
+	}
+
+	// 4) 0 to'g'ri javob — streak XP leakini oldini olish
+	if correctAnswers == 0 {
+		xpEligible = false
+	}
+	// ─────────────────────────────────────────────────────────────────
+
+	// Streak yangilash (har doim — XP berilmasa ham)
 	newStreak, err := streak.UpdateStreak(ctx, h.queries.Pool(), game.UserID)
 	if err != nil {
 		h.log.Error("streak yangilash xatosi", zap.Error(err), zap.String("user_id", game.UserID.String()))
 		newStreak = 0
 	}
 
-	// Bugun shu set uchun XP olganmi?
-	alreadyEarned, _ := h.queries.HasEarnedXPToday(ctx, game.UserID, game.QuizSetID)
-
-	// XP hisoblash (bot yuborgan to'g'ri qiymatlar ishlatiladi)
+	// XP hisoblash
+	// - Birinchi o'yin: to'liq XP
+	// - Replay (bugun allaqachon o'ynagan): 25% XP
 	xpEarned := 0
 	streakBonus := 0
-	if !alreadyEarned {
-		xpEarned = scoring.CalculateXP(correctAnswers, totalQuestions, newStreak)
+	var xpDetail scoring.XPCalcResult
+	const replayXPPercent = 25 // replay uchun foiz
+	if xpEligible {
+		xpDetail = scoring.CalculateXPDetail(correctAnswers, totalQuestions, newStreak, avgMsPerQ)
 		streakBonus = streak.ShouldAwardStreakBonus(newStreak)
-		xpEarned += streakBonus
-	} else {
-		// XP berilmaydi, lekin streak bonusini bekor qilamiz
-		newStreak = 0
+		fullXP := xpDetail.Total + streakBonus
+		if isReplay {
+			// Replay: 25% XP, kamida 1 XP (agar to'g'ri javob bo'lsa)
+			xpEarned = (fullXP * replayXPPercent + 99) / 100 // ceiling division
+			if xpEarned < 1 {
+				xpEarned = 1
+			}
+			// Breakdown ni ham kamaytirish
+			xpDetail.Base = (xpDetail.Base * replayXPPercent + 99) / 100
+			xpDetail.Perfect = (xpDetail.Perfect * replayXPPercent + 99) / 100
+			xpDetail.Speed = (xpDetail.Speed * replayXPPercent + 99) / 100
+			xpDetail.Streak = (xpDetail.Streak * replayXPPercent + 99) / 100
+			streakBonus = (streakBonus * replayXPPercent + 99) / 100
+		} else {
+			xpEarned = fullXP
+		}
 	}
 
 	// UserStats olish va yangilash
@@ -583,10 +678,12 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		totalCorrect  int
 		totalWrong    int
 		longestStreak int
+		oldTotalXP    int
 	)
 
 	if stats != nil {
 		totalXP = stats.TotalXP
+		oldTotalXP = stats.TotalXP
 		totalGames = stats.TotalGames
 		totalCorrect = stats.TotalCorrect
 		totalWrong = stats.TotalWrong
@@ -595,10 +692,15 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 
 	totalXP += xpEarned
 	totalGames++
-	totalCorrect += game.CorrectAnswers
-	totalWrong += game.WrongAnswers
+	// Bot yuborgan to'g'ri/noto'g'ri qiymatlar (shuffle dan keyin aniqroq)
+	totalCorrect += correctAnswers
+	totalWrong += wrongAnswers
 
-	newLevel := scoring.DetermineLevel(totalXP)
+	// Yangi 100-levelli tizim
+	oldLevelNum := scoring.DetermineLevelNum(oldTotalXP)
+	newLevelNum := scoring.DetermineLevelNum(totalXP)
+	newLevel := scoring.LevelTier(newLevelNum) // tier slug, eski VARCHAR ustun uchun
+	levelUp := newLevelNum > oldLevelNum
 
 	var accuracy float64
 	if totalCorrect+totalWrong > 0 {
@@ -614,6 +716,7 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		UserID:        game.UserID,
 		TotalXP:       totalXP,
 		Level:         newLevel,
+		LevelNum:      newLevelNum,
 		TotalGames:    totalGames,
 		TotalCorrect:  totalCorrect,
 		TotalWrong:    totalWrong,
@@ -626,36 +729,35 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("user stats yangilash xatosi", zap.Error(err))
 	}
 
-	// XP log yozish — faqat birinchi marta (alreadyEarned=false)
+	// XP log yozish — anti-cheat tekshiruvidan o'tgan bo'lsa
 	gameRef := game.ID
-	baseXPEarned := xpEarned - streakBonus - newStreak*scoring.StreakXPPerDay
-	if correctAnswers == totalQuestions {
-		baseXPEarned -= scoring.PerfectBonusXP
-	}
-	if baseXPEarned < 0 {
-		baseXPEarned = 0
-	}
-	xpLogs := []db.AddXPLogParams{
-		{UserID: game.UserID, Amount: baseXPEarned, Reason: "quiz_complete", ReferenceID: &gameRef},
-	}
-	if correctAnswers == totalQuestions {
-		xpLogs = append(xpLogs, db.AddXPLogParams{
-			UserID: game.UserID, Amount: scoring.PerfectBonusXP,
-			Reason: "perfect_score", ReferenceID: &gameRef,
-		})
-	}
-	if newStreak > 0 {
-		streakXP := newStreak * scoring.StreakXPPerDay
-		if streakBonus > 0 {
-			streakXP += streakBonus
+	if xpEligible {
+		// Har bir XP turi alohida log
+		xpLogs := []db.AddXPLogParams{
+			{UserID: game.UserID, Amount: xpDetail.Base, Reason: "quiz_complete", ReferenceID: &gameRef},
 		}
-		xpLogs = append(xpLogs, db.AddXPLogParams{
-			UserID: game.UserID, Amount: streakXP,
-			Reason: "streak", ReferenceID: &gameRef,
-		})
-	}
-	if !alreadyEarned {
+		if xpDetail.Perfect > 0 {
+			xpLogs = append(xpLogs, db.AddXPLogParams{
+				UserID: game.UserID, Amount: xpDetail.Perfect,
+				Reason: "perfect_score", ReferenceID: &gameRef,
+			})
+		}
+		if xpDetail.Speed > 0 {
+			xpLogs = append(xpLogs, db.AddXPLogParams{
+				UserID: game.UserID, Amount: xpDetail.Speed,
+				Reason: "speed_bonus", ReferenceID: &gameRef,
+			})
+		}
+		if xpDetail.Streak+streakBonus > 0 {
+			xpLogs = append(xpLogs, db.AddXPLogParams{
+				UserID: game.UserID, Amount: xpDetail.Streak + streakBonus,
+				Reason: "streak", ReferenceID: &gameRef,
+			})
+		}
 		for _, lp := range xpLogs {
+			if lp.Amount <= 0 {
+				continue
+			}
 			if err := h.queries.AddXPLog(ctx, lp); err != nil {
 				h.log.Error("xp log yozish xatosi", zap.Error(err))
 			}
@@ -685,7 +787,8 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("achievement tekshirish xatosi", zap.Error(err))
 	}
 
-	// Achievement XP larini ham qo'shish
+	// Achievement XP — har doim beriladi (eligible bo'lmasa ham, chunki yutuq alohida)
+	achievementXP := 0
 	for _, ach := range newAchievements {
 		if ach.XPReward > 0 {
 			if err := h.queries.AddXPLog(ctx, db.AddXPLogParams{
@@ -695,12 +798,81 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 				h.log.Error("achievement xp log xatosi", zap.Error(err))
 			}
 			xpEarned += ach.XPReward
+			achievementXP += ach.XPReward
 		}
 	}
 
-	achSlugs := make([]string, len(newAchievements))
-	for i, a := range newAchievements {
-		achSlugs[i] = a.AchievementSlug
+	// Achievement XP dan keyin totalXP ni yana yangilash kerak
+	if achievementXP > 0 {
+		totalXP += achievementXP
+		newLevelNum = scoring.DetermineLevelNum(totalXP)
+		newLevel = scoring.LevelTier(newLevelNum)
+		// Achievement XP dan keyin ham level oshgan bo'lishi mumkin
+		if newLevelNum > oldLevelNum {
+			levelUp = true
+		}
+		// User stats ni qayta yozish
+		upsertParams.TotalXP = totalXP
+		upsertParams.Level = newLevel
+		upsertParams.LevelNum = newLevelNum
+		if err := h.queries.UpsertUserStats(ctx, upsertParams); err != nil {
+			h.log.Error("user stats achievement yangilash xatosi", zap.Error(err))
+		}
+	}
+
+	// Achievement larni full object sifatida tayyorlash (slug emas)
+	achInfos := make([]AchievementInfo, 0, len(newAchievements))
+	for _, a := range newAchievements {
+		icon := a.AchievementIcon
+		if icon == "" {
+			icon = "🏅"
+		}
+		achInfos = append(achInfos, AchievementInfo{
+			Slug: a.AchievementSlug,
+			Name: a.AchievementName,
+			Icon: icon,
+			XP:   a.XPReward,
+		})
+	}
+
+	// Level-up push xabarnomasi (faqat tier chegarasi kesilganda)
+	if levelUp && scoring.LevelTier(oldLevelNum) != newLevel {
+		telegramID, firstName, tgErr := h.queries.GetTelegramIDByUUID(ctx, game.UserID)
+		if tgErr == nil && telegramID != 0 {
+			name := firstName
+			if name == "" {
+				name = "Siz"
+			}
+			tierNameUz := map[string]string{
+				"beginner":    "Yangi boshlovchi",
+				"student":     "Talaba",
+				"expert":      "Bilimdon",
+				"skilled":     "Mahoratli",
+				"experienced": "Tajribali",
+				"mentor":      "Ustoz",
+				"sage":        "Donishmand",
+				"professor":   "Professor",
+				"academic":    "Akademik",
+				"legendary":   "Afsonaviy",
+				"legend":      "Legenda",
+			}
+			tierIcon := map[string]string{
+				"beginner": "🌱", "student": "📗", "expert": "📘",
+				"skilled": "📙", "experienced": "📕", "mentor": "🎓",
+				"sage": "🦉", "professor": "🏛", "academic": "👑",
+				"legendary": "⭐", "legend": "🏆",
+			}
+			tier := tierNameUz[newLevel]
+			icon := tierIcon[newLevel]
+			notifText := fmt.Sprintf(
+				"🎉 <b>Tabrik, %s!</b>\n\nSiz <b>Lvl %d</b> ga ko'tarildingiz!\n%s <b>%s</b> darajasiga yetdingiz.\n⚡️ Jami XP: <b>%d</b>",
+				name, newLevelNum, icon, tier, totalXP,
+			)
+			buttons := []leaderboard.InlineBtn{{Text: "👤 Profilni ko'rish", URL: "https://t.me/aiquizlybot?start=profile"}}
+			if pushErr := h.lb.PushNotification(ctx, telegramID, notifText, buttons); pushErr != nil {
+				h.log.Warn("level-up bildirish xatosi", zap.Error(pushErr))
+			}
+		}
 	}
 
 	// Leaderboard yangilash va reyting o'zgarishini tekshirish
@@ -781,13 +953,44 @@ func (h *GameHandler) FinishGame(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// XP breakdown — natija ekranida ko'rsatish uchun
+	breakdown := XPBreakdown{
+		Base:        xpDetail.Base,
+		Perfect:     xpDetail.Perfect,
+		Speed:       xpDetail.Speed,
+		Streak:      xpDetail.Streak,
+		Milestone:   streakBonus,
+		Achievement: achievementXP,
+	}
+
+	// Level progress — natija va profilda progress bar uchun
+	lvl, curXP, neededXP, ratio := scoring.LevelProgress(totalXP)
+	nextTier := ""
+	if lvl < 100 {
+		nextTier = scoring.LevelTier(lvl + 1)
+	}
+	levelProgress := LevelProgressInfo{
+		CurrentXP: curXP,
+		NeededXP:  neededXP,
+		Ratio:     ratio,
+		NextTier:  nextTier,
+	}
+
 	writeJSON(w, http.StatusOK, finishGameResponse{
 		Score:           finalScore,
-		Correct:         game.CorrectAnswers,
-		Wrong:           game.WrongAnswers,
+		Correct:         correctAnswers,
+		Wrong:           wrongAnswers,
 		Skipped:         game.SkippedAnswers,
 		XPEarned:        xpEarned,
-		NewAchievements: achSlugs,
+		XPEligible:      xpEligible,
+		IsReplay:        isReplay,
+		XPBreakdown:     breakdown,
+		NewAchievements: achInfos,
+		Level:           newLevelNum,
+		LevelTier:       newLevel,
+		LevelUp:         levelUp,
+		LevelProgress:   levelProgress,
+		StreakDays:      newStreak,
 	})
 }
 

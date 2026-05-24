@@ -174,7 +174,7 @@ const ImportLogsPage = () => {
                     <EmptyState
                       icon={IconFileImport}
                       title="Mos import topilmadi"
-                      description="Boshqa holat yoki fayl turi filtrini sinab ko'ring."
+                      description="Boshqa holat yoki fayl turi filtrini sinab ko&#39;ring."
                     />
                   </td>
                 </tr>

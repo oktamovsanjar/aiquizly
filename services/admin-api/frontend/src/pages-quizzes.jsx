@@ -64,7 +64,7 @@ const QuizzesPage = () => {
         setConfirmDelete(null);
         toast.success(`"${quiz.title}" o'chirildi`);
       })
-      .catch(() => toast.error('O\'chirib bo\'lmadi'));
+      .catch(() => toast.error("O'chirib bo'lmadi"));
   };
 
   const sourceLabel = {
@@ -182,7 +182,7 @@ const QuizzesPage = () => {
                       <EmptyState
                         icon={IconBookOpen}
                         title="Quiz topilmadi"
-                        description="Boshqa filtr yoki qidiruv so'zini sinab ko'ring."
+                        description="Boshqa filtr yoki qidiruv so&#39;zini sinab ko&#39;ring."
                       />
                     </td>
                   </tr>
@@ -204,7 +204,7 @@ const DeleteQuizDialog = ({ quiz, onConfirm, onClose }) => {
   if (!quiz) return null;
   return (
     <Dialog open={!!quiz} onClose={onClose} maxW="max-w-md">
-      <DialogHeader title="Quizni o'chirish" onClose={onClose} />
+      <DialogHeader title="Quizni o&#39;chirish" onClose={onClose} />
       <DialogBody>
         <p className="text-sm text-zinc-700">
           <span className="font-semibold">"{quiz.title}"</span> quizini o'chirmoqchimisiz?

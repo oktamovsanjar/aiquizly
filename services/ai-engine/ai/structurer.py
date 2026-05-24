@@ -61,6 +61,8 @@ class AIStructurer:
         combined_stats: Dict[str, int] = {}
         for result in results:
             if isinstance(result, Exception):
+                if "AI_QUOTA_ERROR" in str(result):
+                    raise result
                 logger.error("Batch xatosi: %s", result)
                 continue
             questions, stats = result
@@ -104,6 +106,9 @@ class AIStructurer:
                     return validated, stats
 
             except Exception as e:
+                err_str = str(e).lower()
+                if any(k in err_str for k in ("quota", "billing", "insufficient_quota", "insufficient_balance", "insufficient balance", "rate_limit", "authentication", "invalid_api_key", "402")):
+                    raise RuntimeError(f"AI_QUOTA_ERROR: {e}") from e
                 logger.warning(
                     "Batch %d, urinish %d xatosi: %s", batch_idx, attempt + 1, e
                 )

@@ -104,7 +104,7 @@ async def create_quiz(
         quiz_group_id=uuid.UUID(quiz_group_id) if quiz_group_id else None,
         title=title,
         source_type=source_type,
-        visibility="private",
+        visibility="public",
     )
     session.add(quiz)
     return quiz

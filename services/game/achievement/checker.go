@@ -8,34 +8,94 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/quiz-bot/game/db"
+	"github.com/quiz-bot/game/scoring"
 )
 
 // CheckResult — yangi ochilgan yutuq
 type CheckResult struct {
 	AchievementSlug string
 	AchievementName string
+	AchievementIcon string
 	XPReward        int
 }
+
+// checkFn — yutuq sharti tekshiruvi
+type checkFn func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error)
 
 // achievementCondition — yutuq sharti tekshiruvi
 type achievementCondition struct {
 	slug  string
-	check func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error)
+	check checkFn
 }
 
+// ─── Helper closures ────────────────────────────────────────────────
+
+func streakAtLeast(n int) checkFn {
+	return func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
+		return stats.CurrentStreak >= n, nil
+	}
+}
+
+func gamesAtLeast(n int) checkFn {
+	return func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
+		return stats.TotalGames >= n, nil
+	}
+}
+
+func levelAtLeast(n int) checkFn {
+	return func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
+		return scoring.DetermineLevelNum(stats.TotalXP) >= n, nil
+	}
+}
+
+func perfectAtLeast(n int) checkFn {
+	return func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
+		count, err := q.GetPerfectScoreCount(ctx, userID)
+		if err != nil {
+			return false, err
+		}
+		return count >= n, nil
+	}
+}
+
+func gamesInLast24h(n int) checkFn {
+	return func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
+		count, err := q.GetGamesInLast24h(ctx, userID)
+		if err != nil {
+			return false, err
+		}
+		return count >= n, nil
+	}
+}
+
+func weeklyTopAtMost(n int) checkFn {
+	return func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
+		now := time.Now()
+		year, week := now.ISOWeek()
+		periodKey := fmt.Sprintf("%d-W%02d", year, week)
+		rank, err := q.GetUserWeeklyRank(ctx, userID, periodKey)
+		if err != nil {
+			if err == db.ErrNotFound {
+				return false, nil
+			}
+			return false, err
+		}
+		return rank > 0 && rank <= n, nil
+	}
+}
+
+func answersAtLeast(n int) checkFn {
+	return func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
+		return stats.TotalCorrect+stats.TotalWrong >= n, nil
+	}
+}
+
+// ─── Yutuq shartlari ────────────────────────────────────────────────
+
 var conditions = []achievementCondition{
-	{
-		slug: "first_quiz",
-		check: func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
-			return stats.TotalGames >= 1, nil
-		},
-	},
-	{
-		slug: "7_day_streak",
-		check: func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
-			return stats.CurrentStreak >= 7, nil
-		},
-	},
+	// Mavjud yutuqlar
+	{slug: "first_quiz", check: gamesAtLeast(1)},
+	{slug: "7_day_streak", check: streakAtLeast(7)},
 	{
 		slug: "perfect_score",
 		check: func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
@@ -55,34 +115,32 @@ var conditions = []achievementCondition{
 			return count >= 1, nil
 		},
 	},
-	{
-		slug: "top_10",
-		check: func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
-			now := time.Now()
-			year, week := now.ISOWeek()
-			periodKey := fmt.Sprintf("%d-W%02d", year, week)
-			rank, err := q.GetUserWeeklyRank(ctx, userID, periodKey)
-			if err != nil {
-				if err == db.ErrNotFound {
-					return false, nil
-				}
-				return false, err
-			}
-			return rank > 0 && rank <= 10, nil
-		},
-	},
-	{
-		slug: "1000_questions",
-		check: func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
-			return stats.TotalCorrect+stats.TotalWrong >= 1000, nil
-		},
-	},
-	{
-		slug: "academic_level",
-		check: func(ctx context.Context, q *db.Queries, userID uuid.UUID, stats *db.UserStats, event string) (bool, error) {
-			return stats.Level == "academic", nil
-		},
-	},
+	{slug: "top_10", check: weeklyTopAtMost(10)},
+	{slug: "1000_questions", check: answersAtLeast(1000)},
+	{slug: "academic_level", check: levelAtLeast(100)},
+
+	// Yangi yutuqlar (Faza 4)
+	{slug: "streak_3", check: streakAtLeast(3)},
+	{slug: "streak_14", check: streakAtLeast(14)},
+	{slug: "streak_30", check: streakAtLeast(30)},
+	{slug: "streak_100", check: streakAtLeast(100)},
+
+	{slug: "games_10", check: gamesAtLeast(10)},
+	{slug: "games_50", check: gamesAtLeast(50)},
+	{slug: "games_100", check: gamesAtLeast(100)},
+	{slug: "games_500", check: gamesAtLeast(500)},
+
+	{slug: "perfect_10", check: perfectAtLeast(10)},
+	{slug: "perfect_100", check: perfectAtLeast(100)},
+
+	{slug: "level_10", check: levelAtLeast(10)},
+	{slug: "level_25", check: levelAtLeast(25)},
+	{slug: "level_50", check: levelAtLeast(50)},
+	{slug: "level_75", check: levelAtLeast(75)},
+	{slug: "level_100", check: levelAtLeast(100)},
+
+	{slug: "marathon_day", check: gamesInLast24h(10)},
+	{slug: "weekly_top_3", check: weeklyTopAtMost(3)},
 }
 
 // Check — barcha yutuq shartlarini tekshiradi va yangi yutuqlarni ochadi
@@ -139,6 +197,7 @@ func Check(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, stats *db.
 		results = append(results, CheckResult{
 			AchievementSlug: ach.Slug,
 			AchievementName: ach.Name,
+			AchievementIcon: ach.Icon,
 			XPReward:        ach.XPReward,
 		})
 	}

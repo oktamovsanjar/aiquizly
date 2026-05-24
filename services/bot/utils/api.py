@@ -105,6 +105,7 @@ class GameClient:
         set_number: int,
         time_per_question: int = 30,
         chat_id: int | None = None,
+        is_retry: bool = False,
     ) -> dict[str, Any]:
         resp = await self._http.post(
             "/games",
@@ -114,6 +115,7 @@ class GameClient:
                 "set_number": set_number,
                 "time_per_question": time_per_question,
                 "chat_id": chat_id,
+                "is_retry": is_retry,
             },
         )
         _raise_for_service("game", resp)
@@ -198,6 +200,14 @@ class GameClient:
             return resp.json()
 
         return await _cached(f"stats:{user_id}", ttl=20, coro=_fetch)
+
+    async def get_user_achievements(self, user_id: int) -> dict[str, Any]:
+        async def _fetch():
+            resp = await self._http.get(f"/users/{user_id}/achievements")
+            _raise_for_service("game", resp)
+            return resp.json()
+
+        return await _cached(f"ach:{user_id}", ttl=60, coro=_fetch)
 
     async def award_xp(self, user_id: int, xp: int, reason: str) -> dict[str, Any]:
         resp = await self._http.post(
@@ -419,6 +429,7 @@ class AIEngineClient:
         resp = await self._http.patch(f"/quizzes/{quiz_id}", json=body)
         _raise_for_service("ai-engine", resp)
         _cache_invalidate(f"quiz:{quiz_id}")
+        _cache_invalidate("quizzes:")
         return resp.json()
 
     async def update_quiz_visibility(

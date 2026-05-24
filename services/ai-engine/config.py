@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     )  # parallel AI so'rovlar soni
 
     # Fayl cheklovlari
-    max_file_size_mb: int = 10
+    max_file_size_mb: int = 25
     default_set_size: int = 20
 
     class Config:

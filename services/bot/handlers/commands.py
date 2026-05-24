@@ -104,38 +104,33 @@ async def cmd_help(message: Message) -> None:
 
 @router.message(Command("settings"))
 async def cmd_settings(message: Message, state: FSMContext) -> None:
+    from utils.user_settings import get_user_settings
+
     data = await state.get_data()
     lang = data.get("language_code", "uz")
+    lang_display = {"uz": "🇺🇿 O'zbek", "ru": "🇷🇺 Русский", "en": "🇬🇧 English"}.get(lang, "🇺🇿 O'zbek")
 
-    lang_display = {"uz": "🇺🇿 O'zbek", "ru": "🇷🇺 Русский", "en": "🇬🇧 English"}.get(
-        lang, "🇺🇿 O'zbek"
-    )
+    saved = await get_user_settings(message.from_user.id)
+    time_sec = saved.get("time_sec", 30)
+    shuffle_q = "✅" if saved.get("shuffle_questions", True) else "❌"
+    shuffle_o = "✅" if saved.get("shuffle_options", True) else "❌"
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🇺🇿 O'zbek", callback_data="set:lang:uz"),
-                InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set:lang:ru"),
-                InlineKeyboardButton(text="🇬🇧 English", callback_data="set:lang:en"),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔔 Bildirish: Yoq", callback_data="set:notif:off"
-                ),
-                InlineKeyboardButton(
-                    text="🔔 Bildirish: Yoqish", callback_data="set:notif:on"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⏰ Eslatma vaqti", callback_data="set:reminder"
-                )
-            ],
-        ]
-    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇺🇿 O'zbek", callback_data="set:lang:uz"),
+            InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set:lang:ru"),
+            InlineKeyboardButton(text="🇬🇧 English", callback_data="set:lang:en"),
+        ],
+        [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
+    ])
 
     await message.answer(
-        f"⚙️ <b>Sozlamalar</b>\n\n" f"Til: {lang_display}\n" "Bildirish: Yoqilgan\n",
+        f"⚙️ <b>Sozlamalar</b>\n\n"
+        f"🌐 Til: {lang_display}\n"
+        f"⏱ Savol vaqti: <b>{time_sec} soniya</b>\n"
+        f"🔀 Savollar aralash: <b>{shuffle_q}</b>\n"
+        f"🔀 Variantlar aralash: <b>{shuffle_o}</b>\n\n"
+        "<i>Vaqt va aralash sozlamalari quiz boshlanishida o'zgartiriladi.</i>",
         reply_markup=kb,
     )
 

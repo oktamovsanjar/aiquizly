@@ -66,6 +66,8 @@ def process_file_task(
         )
     except Exception as exc:
         logger.error("process_file_task xatosi: %s", exc, exc_info=True)
+        if "AI_QUOTA_ERROR" in str(exc):
+            raise exc  # retry qilmaymiz
         raise self.retry(exc=exc, countdown=10)
 
 
@@ -161,9 +163,31 @@ async def _process_file_async(
     # Stage 3: Matnni bo'laklarga bo'lish va parallel AI strukturlash
     blocks = _chunk_text(raw_text)
     structurer = AIStructurer()
-    questions, stats = await structurer.structure_blocks(blocks)
+    quota_error = False
+    try:
+        questions, stats = await structurer.structure_blocks(blocks)
+    except RuntimeError as e:
+        if "AI_QUOTA_ERROR" in str(e):
+            quota_error = True
+            questions, stats = [], {}
+        else:
+            raise
+
+    # Stage 4: Barcha batch lardan keyin umumiy dedupe
+    from ai.validator import validate_questions
+    questions, final_stats = validate_questions(questions)
+    for k, v in final_stats.items():
+        stats[k] = stats.get(k, 0) + v
+
+    if quota_error:
+        stats["quota_error"] = True
 
     result = _build_result(questions, file_name, file_hash, stats)
+
+    # Savol topilmasa DB ga saqlamaymiz
+    if not questions:
+        return result
+
     await _save_to_db(
         AsyncSessionLocal,
         result,

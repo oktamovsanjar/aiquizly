@@ -80,7 +80,7 @@ def my_quiz_list_keyboard(
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"{vis} {title[:28]} ({count})",
+                    text=f"{vis} {title[:35]}",
                     callback_data=f"qb:quiz:{qid}",
                 ),
                 InlineKeyboardButton(text="⚙️", callback_data=f"qb:manage:{qid}"),
@@ -117,7 +117,8 @@ def quiz_manage_keyboard(
 ) -> InlineKeyboardMarkup:
     """Quiz boshqaruv menyusi: o'ynash, tahrirlash, ko'rinish, o'chirish."""
     vis_text = "🔒 Yopiq qilish" if is_public else "🌐 Ochiq qilish"
-    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    quiz_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    share_link = f"https://t.me/share/url?url={quiz_link}&text=Bu%20quizni%20sinab%20ko%27ring%21"
     return _kb(
         [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:quiz:{quiz_id}")],
         [InlineKeyboardButton(text="🔗 Ulashish", url=share_link)],
@@ -317,7 +318,8 @@ def quiz_result_keyboard(
             ]
         )
 
-    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    quiz_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    share_link = f"https://t.me/share/url?url={quiz_link}&text=Bu%20quizni%20sinab%20ko%27ring%21"
     rows.append(
         [
             InlineKeyboardButton(
@@ -353,7 +355,6 @@ def retry_result_keyboard(
 def upload_menu_keyboard() -> InlineKeyboardMarkup:
     return _kb(
         [InlineKeyboardButton(text="📄 Fayl yuklash", callback_data="up:file")],
-        [InlineKeyboardButton(text="📷 Rasm yuborish", callback_data="up:image")],
         [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
     )
 
@@ -502,12 +503,12 @@ def premium_plans_keyboard() -> InlineKeyboardMarkup:
     return _kb(
         [
             InlineKeyboardButton(
-                text="📅 Oylik — 29 000 so'm", callback_data="pay:monthly"
+                text="🔥 Oylik — 1 ⭐ (aksiya!)", callback_data="pay:monthly"
             )
         ],
         [
             InlineKeyboardButton(
-                text="📆 Yillik — 249 000 so'm (29% tejash)", callback_data="pay:yearly"
+                text="🔥 Yillik — 1 ⭐ (aksiya!)", callback_data="pay:yearly"
             )
         ],
         [
@@ -526,10 +527,19 @@ def profile_keyboard() -> InlineKeyboardMarkup:
     return _kb(
         [
             InlineKeyboardButton(text="📊 Batafsil", callback_data="prof:detail"),
-            InlineKeyboardButton(text="💎 Obuna", callback_data="prof:premium"),
+            InlineKeyboardButton(text="🏅 Yutuqlar", callback_data="prof:achievements"),
         ],
-        [InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="prof:settings")],
+        [
+            InlineKeyboardButton(text="💎 Obuna", callback_data="prof:premium"),
+            InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="prof:settings"),
+        ],
         [InlineKeyboardButton(text="📌 Quiz Guruhlarim", callback_data="qg:list")],
+    )
+
+
+def back_to_profile_keyboard() -> InlineKeyboardMarkup:
+    return _kb(
+        [InlineKeyboardButton(text="◀ Profilga qaytish", callback_data="prof:view")],
     )
 
 
@@ -538,11 +548,9 @@ def profile_keyboard() -> InlineKeyboardMarkup:
 
 def referral_keyboard(bot_username: str, user_id: int) -> InlineKeyboardMarkup:
     link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+    share_text = f"Quizly botda test ishlang va bilimingizni sinang! {link}"
     return _kb(
-        [
-            InlineKeyboardButton(text="📤 Ulashish", url=link),
-        ],
-        [InlineKeyboardButton(text="📋 Link nusxalash", callback_data="ref:copy")],
+        [InlineKeyboardButton(text="📤 Do'stlarga yuborish", switch_inline_query=share_text)],
         [InlineKeyboardButton(text="🏠 Menyu", callback_data="qb:menu")],
     )
 
@@ -716,9 +724,10 @@ def review_delete_confirm_keyboard(q_idx: int) -> InlineKeyboardMarkup:
     )
 
 
-def quiz_done_with_review_keyboard(quiz_id: str, bot_username: str = "aiquizlybot") -> InlineKeyboardMarkup:
+def quiz_done_with_review_keyboard(quiz_id: str, bot_username: str = "aiquizaibot") -> InlineKeyboardMarkup:
     """Quiz tayyor bo'lganda ko'rsatiladigan tugmalar."""
-    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    quiz_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    share_link = f"https://t.me/share/url?url={quiz_link}&text=Bu%20quizni%20sinab%20ko%27ring%21"
     return _kb(
         [InlineKeyboardButton(text="▶️ O'ynash", callback_data=f"qb:play:{quiz_id}")],
         [InlineKeyboardButton(text="🔗 Ulashish", url=share_link)],

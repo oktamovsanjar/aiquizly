@@ -57,7 +57,7 @@ class Quiz(Base):
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     visibility: Mapped[str] = mapped_column(
-        String(20), default="private", server_default="private"
+        String(20), default="public", server_default="public"
     )
     source_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     total_questions: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

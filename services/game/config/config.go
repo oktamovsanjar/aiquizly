@@ -3,10 +3,11 @@ package config
 import "os"
 
 type Config struct {
-	Port        string
-	DatabaseURL string
-	RedisURL    string
-	LogLevel    string
+	Port          string
+	DatabaseURL   string
+	RedisURL      string
+	LogLevel      string
+	AIEngineURL   string
 }
 
 func Load() *Config {
@@ -15,6 +16,7 @@ func Load() *Config {
 		DatabaseURL: mustEnv("DATABASE_URL"),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379/0"),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
+		AIEngineURL: getEnv("AI_ENGINE_URL", "http://ai-engine:8002"),
 	}
 }
 

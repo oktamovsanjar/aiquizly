@@ -83,7 +83,7 @@ const DashboardPage = () => {
       <div className="p-8 max-w-[1400px] mx-auto">
         <PageHeader title="Dashboard" description="Live overview of users, quizzes and revenue." />
         <div className="flex flex-col items-center justify-center h-64 gap-3">
-          <div className="text-red-600 text-sm">{error || 'Ma\'lumot yuklanmadi'}</div>
+          <div className="text-red-600 text-sm">{error || "Ma'lumot yuklanmadi"}</div>
           <Button variant="outline" onClick={() => window.location.reload()}>Qayta urinish</Button>
         </div>
       </div>

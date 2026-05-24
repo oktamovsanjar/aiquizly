@@ -30,12 +30,15 @@ def _quiz_dict(q: Quiz) -> dict:
 @router.get("", dependencies=[Depends(require_auth)])
 async def list_quizzes(
     page: int = Query(1, ge=1),
+    offset: Optional[int] = Query(None, ge=0),
     limit: int = Query(50, le=200),
     visibility: Optional[str] = Query(None, pattern="^(public|private)$"),
     source_type: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    offset = (page - 1) * limit
+    from sqlalchemy import or_, cast, String
+    real_offset = offset if offset is not None else (page - 1) * limit
     stmt = select(Quiz).where(Quiz.deleted_at.is_(None))
     count_stmt = select(func.count()).select_from(Quiz).where(Quiz.deleted_at.is_(None))
 
@@ -45,12 +48,16 @@ async def list_quizzes(
     if source_type:
         stmt = stmt.where(Quiz.source_type == source_type)
         count_stmt = count_stmt.where(Quiz.source_type == source_type)
+    if search:
+        like = f"%{search}%"
+        stmt = stmt.where(Quiz.title.ilike(like))
+        count_stmt = count_stmt.where(Quiz.title.ilike(like))
 
     total = (await db.execute(count_stmt)).scalar() or 0
     quizzes = (
         (
             await db.execute(
-                stmt.order_by(Quiz.created_at.desc()).offset(offset).limit(limit)
+                stmt.order_by(Quiz.created_at.desc()).offset(real_offset).limit(limit)
             )
         )
         .scalars()
@@ -102,7 +109,7 @@ async def set_visibility(
     await db.execute(
         update(Quiz)
         .where(Quiz.id == uuid_mod.UUID(quiz_id))
-        .values(visibility=visibility, updated_at=datetime.now(timezone.utc))
+        .values(visibility=visibility, updated_at=datetime.utcnow())
     )
     await db.commit()
     return {"quiz_id": quiz_id, "visibility": visibility}

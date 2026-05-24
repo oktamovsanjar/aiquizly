@@ -7,7 +7,7 @@ const LoginPage = ({ onLogin }) => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     setError('');
     if (token.trim().length < 6) {
@@ -15,10 +15,28 @@ const LoginPage = ({ onLogin }) => {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const origin = window.location.origin;
+      const prefix = window.location.pathname.startsWith('/admin') ? '/admin' : '';
+      const res = await fetch(origin + prefix + '/analytics/overview', {
+        headers: { 'X-Admin-Token': token.trim(), 'Content-Type': 'application/json' },
+      });
+      if (res.status === 403) {
+        setError('Token noto\'g\'ri. Iltimos, to\'g\'ri admin tokenni kiriting.');
+        setLoading(false);
+        return;
+      }
+      if (!res.ok && res.status !== 200) {
+        setError('Server xatosi. Qayta urinib ko\'ring.');
+        setLoading(false);
+        return;
+      }
       onLogin(token.trim(), remember);
-    }, 700);
+    } catch {
+      setError('Serverga ulanib bo\'lmadi. Qayta urinib ko\'ring.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

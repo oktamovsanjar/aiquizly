@@ -218,6 +218,28 @@ func (s *Service) PushNotification(ctx context.Context, telegramID int64, text s
 	return s.redis.RPush(ctx, "notification:queue", data).Err()
 }
 
+// DBUserXP — RebuildFromDB uchun interface
+type DBUserXP interface {
+	GetID() string
+	GetXP() float64
+}
+
+// RebuildAllTime — DB dan olingan user XP lari asosida leaderboard:alltime ni qayta tiklaydi
+func (s *Service) RebuildAllTime(ctx context.Context, entries []struct {
+	UserID string
+	XP     float64
+}) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	pipe := s.redis.Pipeline()
+	for _, e := range entries {
+		pipe.ZAdd(ctx, "leaderboard:alltime", redis.Z{Score: e.XP, Member: e.UserID})
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 func isoWeek(t time.Time) string {
 	year, week := t.ISOWeek()
 	return fmt.Sprintf("%d-W%02d", year, week)

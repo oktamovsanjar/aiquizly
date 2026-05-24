@@ -323,7 +323,12 @@ async def cb_review_done(cb: CallbackQuery, state: FSMContext) -> None:
     total = await _get_total(quiz_id)
     await state.clear()
     await cb.answer("✅ Tahrirlash tugadi")
+    try:
+        me = await cb.bot.get_me()
+        bot_username = me.username or "aiquizaibot"
+    except Exception:
+        bot_username = "aiquizaibot"
     await cb.message.edit_text(
         f"✅ Quiz tahrirlandi!\n📊 {total} ta savol",
-        reply_markup=quiz_done_with_review_keyboard(quiz_id),
+        reply_markup=quiz_done_with_review_keyboard(quiz_id, bot_username),
     )

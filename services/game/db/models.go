@@ -45,7 +45,8 @@ type UserStats struct {
 	ID            uuid.UUID  `json:"id"`
 	UserID        uuid.UUID  `json:"user_id"`
 	TotalXP       int        `json:"total_xp"`
-	Level         string     `json:"level"`
+	Level         string     `json:"level"`     // tier slug: beginner/student/.../legend
+	LevelNum      int        `json:"level_num"` // 1..100 (Faza 2)
 	TotalGames    int        `json:"total_games"`
 	TotalCorrect  int        `json:"total_correct"`
 	TotalWrong    int        `json:"total_wrong"`
@@ -142,6 +143,7 @@ type UpsertUserStatsParams struct {
 	UserID        uuid.UUID
 	TotalXP       int
 	Level         string
+	LevelNum      int
 	TotalGames    int
 	TotalCorrect  int
 	TotalWrong    int

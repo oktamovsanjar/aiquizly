@@ -31,6 +31,7 @@ from keyboards.inline import (
     quiz_result_keyboard,
     retry_result_keyboard,
 )
+from keyboards.main_menu import main_menu_keyboard, quiz_active_keyboard
 from utils.api import ai_engine_client, game_client
 from utils.i18n import t
 
@@ -66,16 +67,10 @@ async def quiz_start_menu(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "up:menu")
 async def upload_menu(cb: CallbackQuery, state: FSMContext) -> None:
-    """Fayl yuklash menyusiga o'tish (inline tugma orqali)."""
-    from keyboards.inline import upload_menu_keyboard
-
     data = await state.get_data()
     lang = data.get("language_code", "uz")
     await state.set_state(QuizStates.FILE_UPLOAD)
-    await cb.message.edit_text(
-        t("upload_select_method", lang),
-        reply_markup=upload_menu_keyboard(),
-    )
+    await cb.message.edit_text(t("upload_send_file", lang))
     await cb.answer()
 
 
@@ -697,6 +692,11 @@ async def _start_quiz_from(cb: CallbackQuery, state: FSMContext, quiz_id: str, s
     await cb.message.delete()
     await cb.answer()
 
+    await cb.bot.send_message(
+        cb.message.chat.id,
+        "▶️ Quiz boshlandi!",
+        reply_markup=quiz_active_keyboard(),
+    )
     await _send_next_question(cb.message.chat.id, cb.from_user.id, state, cb.bot)
 
 
@@ -968,6 +968,29 @@ async def on_poll_answer(poll_answer: PollAnswer, state: FSMContext, bot: Bot) -
     )  # noqa: E501
 
 
+# ─────────────────────────── Exit (reply keyboard) ───────────────────────────
+
+
+@router.message(F.text == "⏹ Exit")
+async def exit_quiz(message: Message, state: FSMContext) -> None:
+    """User 'Exit' tugmasini bosdi — quiz holatida bo'lsa natijani ko'rsat, aks holda menyuga qayt."""
+    current_state = await state.get_state()
+    data = await state.get_data()
+    lang = data.get("language_code", "uz")
+
+    if current_state in (QuizStates.QUIZ_PLAYING.state, QuizStates.PAUSED.state):
+        # Aktiv timerni to'xtat
+        current_poll_id = data.get("current_poll_id")
+        if current_poll_id:
+            key = _timer_key(message.from_user.id, current_poll_id)
+            task = _poll_timers.pop(key, None)
+            if task and not task.done():
+                task.cancel()
+        await _show_results(message.chat.id, message.from_user.id, state, message.bot)
+    else:
+        await message.answer("Menyu:", reply_markup=main_menu_keyboard(lang))
+
+
 # ─────────────────────────── To'xtatish / Pauza ───────────────────────────
 
 
@@ -1011,7 +1034,7 @@ async def continue_quiz(cb: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(_finishing=False)
     chat_id = cb.message.chat.id
     user_id = cb.from_user.id
-    await cb.message.delete()
+    await cb.message.edit_reply_markup(reply_markup=None)
     await cb.answer()
     await _send_next_question(chat_id, user_id, state, cb.bot)
 
@@ -1055,7 +1078,15 @@ async def _show_results(
     header = "💯 Mukammal!" if perfect else t("quiz_completed", lang)
 
     xp_earned = 0
+    xp_eligible = True
+    already_today = False
     new_achievements = []
+    breakdown = {}
+    streak_days = 0
+    level_num = 0
+    level_tier = "beginner"
+    level_up = False
+    level_progress = {}
     if game_id:
         try:
             from utils.api import _cache_invalidate
@@ -1064,7 +1095,15 @@ async def _show_results(
                 game_id, status="completed", correct=correct, total=total
             )
             xp_earned = result.get("xp_earned", 0)
-            new_achievements = result.get("new_achievements", [])
+            xp_eligible = result.get("xp_eligible", True)
+            already_today = result.get("is_replay", False)
+            new_achievements = result.get("new_achievements", []) or []
+            breakdown = result.get("xp_breakdown", {}) or {}
+            streak_days = result.get("streak_days", 0)
+            level_num = result.get("level", 0)
+            level_tier = result.get("level_tier", "beginner")
+            level_up = result.get("level_up", False)
+            level_progress = result.get("level_progress", {}) or {}
             # Stats/rank cache ni tozalaymiz — profil yangi XP ni ko'rsin
             _cache_invalidate(f"stats:{user_id}")
             _cache_invalidate(f"rank:{user_id}")
@@ -1078,10 +1117,73 @@ async def _show_results(
         f"⏭ Javobsiz: {skipped}/{total}\n\n"
         f"🏆 Ball: {score} / 1000\n"
     )
-    if xp_earned:
-        text += f"\n+{xp_earned} XP yutdingiz!"
+
+    if xp_eligible and xp_earned > 0:
+        if already_today:
+            text += f"\n⚡ <b>+{xp_earned} XP</b> <i>(qayta o'yin — 25%)</i>\n"
+        else:
+            text += f"\n⚡ <b>+{xp_earned} XP</b>\n"
+        parts = []
+        if breakdown.get("base"):
+            parts.append(f"  • Asosiy: +{breakdown['base']}")
+        if breakdown.get("perfect"):
+            parts.append(f"  • Mukammal: +{breakdown['perfect']}")
+        if breakdown.get("speed"):
+            parts.append(f"  • Tezlik: +{breakdown['speed']}")
+        if breakdown.get("streak"):
+            parts.append(f"  • Streak ({streak_days} kun): +{breakdown['streak']}")
+        if breakdown.get("milestone"):
+            parts.append(f"  • Milestone bonus: +{breakdown['milestone']}")
+        if breakdown.get("achievement"):
+            parts.append(f"  • Yutuqlar: +{breakdown['achievement']}")
+        if parts:
+            text += "\n".join(parts) + "\n"
+
+        # Level progress bar
+        if level_num and level_progress:
+            from handlers.profile import (
+                LEVEL_TIER_ICONS,
+                LEVEL_TIER_NAMES_UZ,
+                _progress_bar,
+            )
+
+            ratio = float(level_progress.get("ratio", 0.0))
+            current_xp = int(level_progress.get("current_xp", 0))
+            needed_xp = int(level_progress.get("needed_xp", 0))
+            remaining = max(0, needed_xp - current_xp)
+            tier_icon = LEVEL_TIER_ICONS.get(level_tier, "🌱")
+            tier_name = LEVEL_TIER_NAMES_UZ.get(level_tier, "Yangi")
+            bar = _progress_bar(ratio, width=10)
+            text += f"\n{tier_icon} <b>Lvl {level_num} · {tier_name}</b>\n"
+            text += f"[{bar}] {int(ratio*100)}%\n"
+            if level_num < 100:
+                text += f"Keyingi darajagacha: <b>{remaining} XP</b>\n"
+
+        if level_up and level_num > 0:
+            from handlers.profile import LEVEL_TIER_ICONS, LEVEL_TIER_NAMES_UZ
+
+            tier_icon = LEVEL_TIER_ICONS.get(level_tier, "🌱")
+            tier_name = LEVEL_TIER_NAMES_UZ.get(level_tier, "Yangi")
+            text += f"\n🎉 <b>YANGI DARAJA: Lvl {level_num}!</b>\n"
+            text += f"{tier_icon} {tier_name} darajasiga ko'tarildingiz!\n"
+    elif not xp_eligible:
+        text += "\n🔁 Bu mashq uchun XP berilmaydi (qayta urinish/tezkor javob)."
+
     if new_achievements:
-        text += f"\n🏅 Yangi yutuq: {', '.join(new_achievements)}"
+        ach_lines = ["", "🏅 <b>Yangi yutuqlar:</b>"]
+        for ach in new_achievements:
+            if isinstance(ach, dict):
+                icon = ach.get("icon", "🏅")
+                name = ach.get("name") or ach.get("slug", "")
+                xp = ach.get("xp", 0)
+                if xp > 0:
+                    ach_lines.append(f"  {icon} {name} (+{xp} XP)")
+                else:
+                    ach_lines.append(f"  {icon} {name}")
+            else:
+                # Eski format (slug string) — backward compat
+                ach_lines.append(f"  🏅 {ach}")
+        text += "\n".join(ach_lines)
 
     next_set = (
         set_number + 1 if (correct + wrong + skipped) >= total and total > 0 else None
@@ -1102,10 +1204,13 @@ async def _show_results(
         bot_username=bot_username,
     )
 
+    lang = data.get("language_code", "uz")
     if message:
-        await message.answer(text, reply_markup=kb)
+        await message.answer(text, reply_markup=main_menu_keyboard(lang))
+        await message.answer("Davom etish yoki chiqish:", reply_markup=kb)
     else:
-        await bot.send_message(chat_id, text, reply_markup=kb)
+        await bot.send_message(chat_id, text, reply_markup=main_menu_keyboard(lang))
+        await bot.send_message(chat_id, "Davom etish yoki chiqish:", reply_markup=kb)
 
     # State ni IDLE ga qaytaramiz lekin data ni SAQLAYMIZ — retry uchun kerak
     await state.set_state(QuizStates.IDLE)
@@ -1158,7 +1263,8 @@ async def retry_wrong_answers(cb: CallbackQuery, state: FSMContext) -> None:
     )
 
     await cb.message.answer(
-        f"🔁 {len(wrong_questions)} ta xato savolni qayta ishlash boshlanadi..."
+        f"🔁 {len(wrong_questions)} ta xato savolni qayta ishlash boshlanadi...",
+        reply_markup=quiz_active_keyboard(),
     )
     await cb.answer()
     await _send_next_question(cb.message.chat.id, cb.from_user.id, state, cb.bot)

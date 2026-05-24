@@ -36,7 +36,7 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "text/plain",
 }
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 POLL_INTERVAL = 4  # sekund
 POLL_TIMEOUT = 900  # 15 daqiqa
 
@@ -125,17 +125,15 @@ async def _do_poll(
             total_q = result.get("total_questions", 0)
 
             if not quiz_id or total_q == 0:
+                warnings = result.get("warnings", {})
+                if warnings.get("quota_error"):
+                    msg = t("ai_quota_error", lang)
+                else:
+                    msg = t("upload_no_questions", lang)
                 try:
-                    await bot.edit_message_text(
-                        "⚠️ Faylda savol topilmadi. Boshqa fayl yuboring.",
-                        chat_id=chat_id,
-                        message_id=progress_msg_id,
-                        reply_markup=_create_keyboard(),
-                    )
+                    await bot.edit_message_text(msg, chat_id=chat_id, message_id=progress_msg_id)
                 except Exception:
-                    await bot.send_message(
-                        chat_id, "⚠️ Faylda savol topilmadi. Boshqa fayl yuboring."
-                    )
+                    await bot.send_message(chat_id, msg)
                 return
 
             warnings = result.get("warnings", {})
@@ -180,14 +178,15 @@ async def _do_poll(
             return
 
         if status == "failed":
+            error_msg = result.get("error", "")
+            if "AI_QUOTA_ERROR" in error_msg:
+                msg = t("ai_quota_error", lang)
+            else:
+                msg = t("upload_error", lang)
             try:
-                await bot.edit_message_text(
-                    t("upload_error", lang),
-                    chat_id=chat_id,
-                    message_id=progress_msg_id,
-                )
+                await bot.edit_message_text(msg, chat_id=chat_id, message_id=progress_msg_id)
             except Exception:
-                await bot.send_message(chat_id, t("upload_error", lang))
+                await bot.send_message(chat_id, msg)
             return
 
         # Har 3 siklda (12 sek) status xabarini yangilash
@@ -223,9 +222,7 @@ async def _do_poll(
 async def quiz_create_menu(message: Message, state: FSMContext) -> None:
     lang = await _get_lang(state)
     await state.set_state(QuizStates.FILE_UPLOAD)
-    await message.answer(
-        t("upload_select_method", lang), reply_markup=_create_keyboard()
-    )
+    await message.answer(t("upload_send_file", lang))
 
 
 @router.callback_query(F.data == "up:file")

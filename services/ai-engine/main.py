@@ -87,7 +87,7 @@ async def process_file(req: ProcessRequest):
     import httpx
 
     if req.file_size > settings.max_file_size_mb * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Fayl hajmi katta (max 10MB)")
+        raise HTTPException(status_code=400, detail="Fayl hajmi katta (max 25MB)")
 
     # Faylni yuklab olish
     try:
@@ -376,6 +376,21 @@ async def update_quiz(quiz_id: str, body: QuizUpdate):
         if not quiz:
             raise HTTPException(status_code=404, detail="Quiz topilmadi")
     return {"id": quiz_id, "title": quiz.title, "visibility": quiz.visibility}
+
+
+@app.post("/quizzes/{quiz_id}/increment_play")
+async def increment_play_count(quiz_id: str):
+    """Quiz play_count ni +1 qiladi."""
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import update as _update
+        await session.execute(
+            _update(Quiz)
+            .where(Quiz.id == __import__("uuid").UUID(quiz_id))
+            .where(Quiz.deleted_at.is_(None))
+            .values(play_count=Quiz.play_count + 1)
+        )
+        await session.commit()
+    return {"ok": True}
 
 
 @app.delete("/quizzes/{quiz_id}")

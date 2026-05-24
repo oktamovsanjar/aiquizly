@@ -133,36 +133,38 @@ async def cmd_start_quiz(message: Message, state: FSMContext, command: CommandOb
     quiz_id = (command.args or "")[5:]
     user, is_new = await _upsert_user(message)
 
-    # Yangi user — avval til tanlashi kerak, quiz_id ni saqlaymiz
-    if is_new or not _is_returning_user(user):
+    if not _is_returning_user(user):
+        # Yangi user — avval til tanlashi kerak, quiz_id ni saqlaymiz
         lang = message.from_user.language_code or "uz"
         if lang not in ("uz", "ru", "en"):
             lang = "uz"
         await state.update_data(pending_quiz_id=quiz_id)
-        await message.answer(
-            t("welcome_new", lang),
-            reply_markup=language_keyboard(),
-        )
+        await message.answer(t("welcome_new", lang), reply_markup=language_keyboard())
         return
 
     # Mavjud user — darhol quizga yo'naltirish
-    await _open_quiz_by_id(message, state, quiz_id, user.language_code or "uz")
+    lang = user.language_code or "uz"
+    await state.update_data(language_code=lang)
+    await _open_quiz_by_id(message, state, quiz_id, lang)
 
 
 @router.message(CommandStart(deep_link=True, magic=F.args.startswith("ref_")))
-async def cmd_start_referral(message: Message, command: CommandObject) -> None:
+async def cmd_start_referral(message: Message, command: CommandObject, state: FSMContext) -> None:
     """Deep link orqali kirish: /start ref_<telegram_id>"""
     args = command.args or ""
     try:
-        referrer_tg_id = int(args[4:])  # "ref_" ni olib tashlaymiz
+        referrer_tg_id = int(args[4:])
     except (ValueError, IndexError):
-        await cmd_start(message)
+        await cmd_start(message, state)
         return
 
     user, is_new = await _upsert_user(message)
+    lang = user.language_code or message.from_user.language_code or "uz"
+    if lang not in ("uz", "ru", "en"):
+        lang = "uz"
+
     if is_new:
         import asyncio
-
         asyncio.create_task(
             notify_new_user(
                 message.bot,
@@ -172,21 +174,22 @@ async def cmd_start_referral(message: Message, command: CommandObject) -> None:
                 params=[f"ref_{referrer_tg_id}"],
             )
         )
+
     referrer_name = await _process_referral(user, referrer_tg_id)
 
-    bonus_text = ""
-    lang = message.from_user.language_code or "uz"
-    if lang not in ("uz", "ru", "en"):
-        lang = "uz"
-    if referrer_name:
-        bonus_text = t(
-            "referral_bonus", lang, name=referrer_name, xp=REFERRAL_XP_REFERRED
-        )
-
-    await message.answer(
-        t("welcome_new", lang) + bonus_text,
-        reply_markup=language_keyboard(),
-    )
+    if is_new:
+        bonus_text = ""
+        if referrer_name:
+            bonus_text = t("referral_bonus", lang, name=referrer_name, xp=REFERRAL_XP_REFERRED)
+        await message.answer(t("welcome_new", lang) + bonus_text, reply_markup=language_keyboard())
+    else:
+        # Mavjud user — normal menyu, bonus xabar alohida
+        await state.update_data(language_code=lang)
+        text = await _build_welcome_back(lang, message.from_user.first_name, message.from_user.id)
+        await message.answer(text, reply_markup=main_menu_keyboard(lang))
+        if referrer_name:
+            bonus_text = t("referral_bonus", lang, name=referrer_name, xp=REFERRAL_XP_REFERRED)
+            await message.answer(bonus_text)
 
 
 @router.message(CommandStart())
@@ -208,12 +211,9 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     # Foydalanuvchi allaqachon ro'yxatdan o'tgan bo'lsa — menyu ko'rsat
     if _is_returning_user(user):
         lang = user.language_code or "uz"
-        # FSM state ga tilni saqlash
         await state.update_data(language_code=lang)
-        await message.answer(
-            _welcome_back_text(lang, message.from_user.first_name),
-            reply_markup=main_menu_keyboard(lang),
-        )
+        text = await _build_welcome_back(lang, message.from_user.first_name, message.from_user.id)
+        await message.answer(text, reply_markup=main_menu_keyboard(lang))
         return
 
     lang = message.from_user.language_code or "uz"
@@ -267,8 +267,28 @@ def _is_returning_user(user) -> bool:
         return False
 
 
-def _welcome_back_text(lang: str, name: str | None) -> str:
-    return t("welcome_back", lang, name=name or "")
+async def _build_welcome_back(lang: str, name: str | None, tg_id: int) -> str:
+    from utils.api import game_client
+    from handlers.profile import LEVEL_ICONS, LEVEL_NAMES_UZ
+    xp, streak, level = 0, 0, "beginner"
+    try:
+        stats = await game_client().get_user_stats(tg_id)
+        xp     = stats.get("total_xp", 0)
+        streak = stats.get("current_streak", 0)
+        level  = stats.get("level", "beginner")
+    except Exception:
+        pass
+
+    level_icon = LEVEL_ICONS.get(level, "🌱")
+    level_name = LEVEL_NAMES_UZ.get(level, level)
+    streak_line = f"🔥 <b>{streak} kunlik</b> seriya!\n" if streak >= 2 else ""
+    greetings = {"uz": "Salom", "ru": "Привет", "en": "Hey"}
+
+    return (
+        f"👋 {greetings.get(lang, 'Salom')}, <b>{name or ''}!</b>\n\n"
+        f"{level_icon} {level_name}  •  ⚡ <b>{xp} XP</b>\n"
+        f"{streak_line}"
+    )
 
 
 async def _suggest_top_quiz(message: Message, lang: str) -> None:

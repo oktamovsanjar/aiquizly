@@ -34,9 +34,9 @@ _TEXTS: dict[str, dict[str, str]] = {
         ),
     },
     "welcome_back": {
-        "uz": "Xush kelibsiz, {name}! 👋\n\nAsosiy menyu:",
-        "ru": "Добро пожаловать, {name}! 👋\n\nГлавное меню:",
-        "en": "Welcome back, {name}! 👋\n\nMain menu:",
+        "uz": "Xush kelibsiz, {name}! 👋",
+        "ru": "Добро пожаловать, {name}! 👋",
+        "en": "Welcome back, {name}! 👋",
     },
     "referral_bonus": {
         "uz": "\n\n🎁 <b>{name}</b> taklifi orqali keldingiz!\nSiz: <b>+{xp} XP</b> bonus oldingiz!",
@@ -122,9 +122,9 @@ _TEXTS: dict[str, dict[str, str]] = {
         "en": "Select how to create your quiz:",
     },
     "upload_send_file": {
-        "uz": "📎 Faylni yuboring (.docx, .pdf, .xlsx, .txt, max 10 MB):",
+        "uz": "📎 Faylni yuboring (.docx, .pdf, .xlsx, .txt, max 25 MB):",
         "ru": "📎 Отправьте файл (.docx, .pdf, .xlsx, .txt, макс 10 МБ):",
-        "en": "📎 Send your file (.docx, .pdf, .xlsx, .txt, max 10 MB):",
+        "en": "📎 Send your file (.docx, .pdf, .xlsx, .txt, max 25 MB):",
     },
     "upload_send_image": {
         "uz": "📸 Rasmni yuboring (savollar bilan, max 5 MB):",
@@ -136,10 +136,20 @@ _TEXTS: dict[str, dict[str, str]] = {
         "ru": "⏳ Файл обрабатывается... Это может занять несколько минут.",
         "en": "⏳ Processing your file... This may take a few minutes.",
     },
+    "upload_no_questions": {
+        "uz": "⚠️ Faylda savol topilmadi. Boshqa fayl yuboring.",
+        "ru": "⚠️ В файле не найдено вопросов. Отправьте другой файл.",
+        "en": "⚠️ No questions found in the file. Please send another file.",
+    },
     "upload_error": {
         "uz": "❌ Fayl qayta ishlanmadi. Keyinroq urinib ko'ring.",
         "ru": "❌ Не удалось обработать файл. Попробуйте позже.",
         "en": "❌ File processing failed. Please try again later.",
+    },
+    "ai_quota_error": {
+        "uz": "🪫 AI limiti tugadi\n\nHozircha fayl qayta ishlash vaqtincha to'xtatilgan.\nTez orada tiklanadi — keyinroq urinib ko'ring.",
+        "ru": "🪫 Лимит AI исчерпан\n\nОбработка файлов временно приостановлена.\nСкоро восстановится — попробуйте позже.",
+        "en": "🪫 AI quota exceeded\n\nFile processing is temporarily paused.\nWill be back soon — please try again later.",
     },
     "upload_limit_reached": {
         "uz": "⚠️ Oylik limitga yetdingiz. Premium obuna oling yoki keyingi oy kuting.",
@@ -147,9 +157,9 @@ _TEXTS: dict[str, dict[str, str]] = {
         "en": "⚠️ Monthly limit reached. Get Premium or wait until next month.",
     },
     "upload_file_too_large": {
-        "uz": "❌ Fayl juda katta (max 10 MB).",
+        "uz": "❌ Fayl juda katta (max 25 MB).",
         "ru": "❌ Файл слишком большой (макс 10 МБ).",
-        "en": "❌ File is too large (max 10 MB).",
+        "en": "❌ File is too large (max 25 MB).",
     },
     # ── Manual quiz ───────────────────────────────────────────────────────────
     "manual_title_prompt": {
@@ -251,32 +261,26 @@ _TEXTS: dict[str, dict[str, str]] = {
     },
     "premium_description": {
         "uz": (
-            "📅 <b>Oylik</b> — 29 000 so'm / 150 ⭐\n"
-            "📆 <b>Yillik</b> — 249 000 so'm / 1200 ⭐ (29% tejash)\n\n"
+            "🔥 <b>Aksiya!</b> Hozir atigi <b>1 ⭐</b>\n\n"
             "Premium bilan:\n"
             "• Cheksiz fayl yuklash\n"
             "• Guruhga ulashish\n"
-            "• Quiz doim saqlanadi\n"
             "• Batafsil statistika\n\n"
             "Yoki 3 ta do'st taklif qiling = 9 kun bepul!"
         ),
         "ru": (
-            "📅 <b>Ежемесячный</b> — 29 000 сум / 150 ⭐\n"
-            "📆 <b>Годовой</b> — 249 000 сум / 1200 ⭐ (экономия 29%)\n\n"
+            "🔥 <b>Акция!</b> Сейчас всего <b>1 ⭐</b>\n\n"
             "С Premium:\n"
             "• Безлимитная загрузка файлов\n"
             "• Публикация в группах\n"
-            "• Квизы сохраняются навсегда\n"
             "• Подробная статистика\n\n"
             "Или пригласите 3 друзей = 9 дней бесплатно!"
         ),
         "en": (
-            "📅 <b>Monthly</b> — 29 000 UZS / 150 ⭐\n"
-            "📆 <b>Yearly</b> — 249 000 UZS / 1200 ⭐ (save 29%)\n\n"
+            "🔥 <b>Sale!</b> Now only <b>1 ⭐</b>\n\n"
             "With Premium:\n"
             "• Unlimited file uploads\n"
             "• Share to groups\n"
-            "• Quizzes saved forever\n"
             "• Detailed statistics\n\n"
             "Or invite 3 friends = 9 days free!"
         ),

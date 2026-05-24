@@ -3,7 +3,7 @@
 const MOCK_HISTORY = [
   {
     id: 7001,
-    text: 'Yangi yangilanish: AI import endi rasm fayllarini ham qo\'llab-quvvatlaydi 🚀',
+    text: "Yangi yangilanish: AI import endi rasm fayllarini ham qo'llab-quvvatlaydi 🚀",
     language_code: 'uz',
     recipients: 1213,
     delivered: 1198,
@@ -59,7 +59,7 @@ const NotificationsPage = () => {
     <div className="p-8 max-w-[1400px] mx-auto">
       <PageHeader
         title="Xabarnomalar"
-        description="Foydalanuvchilarga broadcast yuboring va o'tgan yuborishlarni ko'ring."
+        description="Foydalanuvchilarga broadcast yuboring va o&#39;tgan yuborishlarni ko&#39;ring."
       />
       <div className="mb-5">
         <Tabs
@@ -105,7 +105,7 @@ const Broadcast = ({ onSent }) => {
       setSending(false);
       setConfirm(false);
       setText('');
-      toast.success('Broadcast navbatga qo\'yildi');
+      toast.success("Broadcast navbatga qo'yildi");
     }, 1200);
   };
 
@@ -120,7 +120,7 @@ const Broadcast = ({ onSent }) => {
           <div>
             <Label>Xabar</Label>
             <Textarea
-              placeholder="Salom {first_name}! Yangi narsa chiqardik — sinab ko'ring 🎉"
+              placeholder="Salom {first_name}! Yangi narsa chiqardik — sinab ko&#39;ring 🎉"
               value={text}
               onChange={e => setText(e.target.value)}
               className="mt-1.5 min-h-[160px] font-mono text-[13px]"
@@ -142,7 +142,7 @@ const Broadcast = ({ onSent }) => {
                 onChange={setLanguage}
                 options={[
                   { value: 'all', label: 'Barcha tillar' },
-                  { value: 'uz',  label: 'O\'zbek' },
+                  { value: 'uz',  label: "O'zbek" },
                   { value: 'ru',  label: 'Русский' },
                   { value: 'en',  label: 'English' },
                 ]}
@@ -235,7 +235,7 @@ const Broadcast = ({ onSent }) => {
       <Dialog open={confirm} onClose={() => !sending && setConfirm(false)} maxW="max-w-md">
         <DialogHeader
           title="Bu broadcastni yuborish?"
-          description="Bu amalni bekor qilib bo'lmaydi."
+          description="Bu amalni bekor qilib bo&#39;lmaydi."
           onClose={() => !sending && setConfirm(false)}
         />
         <DialogBody>

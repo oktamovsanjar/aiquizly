@@ -189,7 +189,7 @@ const AdminManagement = () => {
 
   const submit = () => {
     if (!draft.telegram_id || !draft.username) {
-      toast.error('Iltimos, ikkala maydonni ham to\'ldiring');
+      toast.error("Iltimos, ikkala maydonni ham to'ldiring");
       return;
     }
     setSubmitting(true);
@@ -312,8 +312,8 @@ const AdminManagement = () => {
       {/* Add admin dialog */}
       <Dialog open={showAdd} onClose={() => !submitting && setShowAdd(false)} maxW="max-w-md">
         <DialogHeader
-          title="Admin qo'shish"
-          description="U keyingi kirganida bu dashboardni ko'radi."
+          title="Admin qo&#39;shish"
+          description="U keyingi kirganida bu dashboardni ko&#39;radi."
           onClose={() => !submitting && setShowAdd(false)}
         />
         <DialogBody className="space-y-4">
@@ -341,7 +341,7 @@ const AdminManagement = () => {
               value={draft.role}
               onChange={v => setDraft({ ...draft, role: v })}
               options={[
-                { value: 'admin',   label: 'Admin · to\'liq kirish' },
+                { value: 'admin',   label: "Admin · to'liq kirish" },
                 { value: 'support', label: 'Support · foydalanuvchilar va xabarlar' },
               ]}
               className="mt-1.5"
@@ -360,8 +360,8 @@ const AdminManagement = () => {
       {/* Remove confirm dialog */}
       <Dialog open={!!confirmRemove} onClose={() => !removing && setConfirmRemove(null)} maxW="max-w-md">
         <DialogHeader
-          title="Bu adminni o'chirish?"
-          description="U darhol kirishdan mahrum bo'ladi."
+          title="Bu adminni o&#39;chirish?"
+          description="U darhol kirishdan mahrum bo&#39;ladi."
           onClose={() => !removing && setConfirmRemove(null)}
         />
         <DialogBody>

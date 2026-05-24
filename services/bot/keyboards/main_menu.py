@@ -1,6 +1,14 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 
+def quiz_active_keyboard() -> ReplyKeyboardMarkup:
+    """Quiz davomida ko'rsatiladigan keyboard — faqat Exit."""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="⏹ Exit")]],
+        resize_keyboard=True,
+    )
+
+
 def main_menu_keyboard(lang: str = "uz") -> ReplyKeyboardMarkup:
     buttons = {
         "uz": [

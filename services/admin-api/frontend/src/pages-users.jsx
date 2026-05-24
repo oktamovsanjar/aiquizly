@@ -87,7 +87,7 @@ const UsersPage = () => {
       <Card>
         <div className="flex items-center gap-3 p-4 border-b border-zinc-100 flex-wrap">
           <Input
-            placeholder="Ism, username yoki Telegram ID bo'yicha qidiring…"
+            placeholder="Ism, username yoki Telegram ID bo&#39;yicha qidiring…"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             leftIcon={<IconSearch className="w-4 h-4" />}
@@ -173,7 +173,7 @@ const UsersPage = () => {
                       <EmptyState
                         icon={IconUsers}
                         title="Foydalanuvchi topilmadi"
-                        description="Qidiruv yoki filtrni o'zgartirib ko'ring."
+                        description="Qidiruv yoki filtrni o&#39;zgartirib ko&#39;ring."
                       />
                     </td>
                   </tr>
@@ -206,7 +206,7 @@ const UserDetailDialog = ({ user, onClose }) => {
             <div>
               <div className="text-base font-semibold">{name}</div>
               <div className="text-xs text-zinc-500 font-normal">
-                {user.username ? `@${user.username}` : 'username yo\'q'} · <span className="font-mono">{user.telegram_id}</span>
+                {user.username ? `@${user.username}` : "username yo'q"} · <span className="font-mono">{user.telegram_id}</span>
               </div>
             </div>
           </div>

@@ -60,7 +60,32 @@ func main() {
 	// Servislar
 	queries := db.NewQueries(pool)
 	lbService := leaderboard.New(redisClient)
-	gameHandler := handlers.NewGameHandler(queries, lbService, logger)
+	gameHandler := handlers.NewGameHandler(queries, lbService, logger, cfg.AIEngineURL)
+
+	// Startup: leaderboard:alltime ni DB dan tiklash (Redis restart bo'lsa)
+	existing, _ := redisClient.ZCard(ctx, "leaderboard:alltime").Result()
+	if existing == 0 {
+		userXPs, err := queries.GetAllUserXP(ctx)
+		if err != nil {
+			logger.Warn("leaderboard rebuild uchun DB dan XP olishda xato", zap.Error(err))
+		} else if len(userXPs) > 0 {
+			entries := make([]struct {
+				UserID string
+				XP     float64
+			}, len(userXPs))
+			for i, u := range userXPs {
+				entries[i] = struct {
+					UserID string
+					XP     float64
+				}{UserID: u.UserID.String(), XP: float64(u.TotalXP)}
+			}
+			if err := lbService.RebuildAllTime(ctx, entries); err != nil {
+				logger.Warn("leaderboard rebuild xatosi", zap.Error(err))
+			} else {
+				logger.Info("leaderboard:alltime DB dan tiklandi", zap.Int("users", len(entries)))
+			}
+		}
+	}
 
 	// Router
 	r := chi.NewRouter()
@@ -172,6 +197,56 @@ func main() {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{"rank": rank, "total": int(score)})
+		})
+
+		r.Get("/achievements", func(w http.ResponseWriter, r *http.Request) {
+			telegramID, err := parseTelegramID(r)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "telegram_id noto'g'ri"})
+				return
+			}
+			all, err := queries.GetAchievements(r.Context())
+			if err != nil {
+				logger.Error("achievements olish xatosi", zap.Error(err))
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ichki xato"})
+				return
+			}
+			userID, uerr := queries.GetUserUUIDByTelegramID(r.Context(), telegramID)
+			unlocked := []map[string]interface{}{}
+			locked := []map[string]interface{}{}
+			unlockedIDs := map[string]bool{}
+			if uerr == nil {
+				userAchs, _ := queries.GetUserAchievements(r.Context(), userID)
+				for _, ua := range userAchs {
+					if ua.Achievement != nil {
+						unlocked = append(unlocked, map[string]interface{}{
+							"slug":        ua.Achievement.Slug,
+							"name":        ua.Achievement.Name,
+							"description": ua.Achievement.Description,
+							"icon":        ua.Achievement.Icon,
+							"xp_reward":   ua.Achievement.XPReward,
+							"unlocked_at": ua.UnlockedAt,
+						})
+						unlockedIDs[ua.AchievementID.String()] = true
+					}
+				}
+			}
+			for _, a := range all {
+				if !unlockedIDs[a.ID.String()] {
+					locked = append(locked, map[string]interface{}{
+						"slug":        a.Slug,
+						"name":        a.Name,
+						"description": a.Description,
+						"icon":        a.Icon,
+						"xp_reward":   a.XPReward,
+					})
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"unlocked": unlocked,
+				"locked":   locked,
+				"total":    len(all),
+			})
 		})
 
 		r.Post("/xp", func(w http.ResponseWriter, r *http.Request) {

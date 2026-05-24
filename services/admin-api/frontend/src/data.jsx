@@ -43,8 +43,8 @@ const TEMPLATES = [
     text_uz: '✅ Quizingiz tayyor! "{quiz_title}" — {questions} ta savol.',
     text_ru: '✅ Ваш тест готов! «{quiz_title}» — {questions} вопросов.',
     text_en: '✅ Your quiz is ready! "{quiz_title}" — {questions} questions.' },
-  { slug: 'daily_reminder', name: 'Daily reminder', description: 'Reminder for users who haven't played in 24h.', is_active: true,
-    text_uz: '👋 {first_name}, bugun bir quiz ishlab qo'ying!',
+  { slug: 'daily_reminder', name: 'Daily reminder', description: "Reminder for users who haven't played in 24h.", is_active: true,
+    text_uz: "👋 {first_name}, bugun bir quiz ishlab qo'ying!",
     text_ru: '👋 {first_name}, реши хотя бы один тест сегодня!',
     text_en: '👋 {first_name}, solve at least one quiz today!' },
   { slug: 'subscription_expiring', name: 'Subscription expiring', description: 'Sent 3 days before subscription ends.', is_active: true,
@@ -54,13 +54,13 @@ const TEMPLATES = [
   { slug: 'import_failed', name: 'Import failed', description: 'Sent when AI import fails.', is_active: true,
     text_uz: '❌ "{file_name}" faylini qayta ishlay olmadik. Sabab: {reason}',
     text_ru: '❌ Не удалось обработать «{file_name}». Причина: {reason}',
-    text_en: '❌ We couldn't process "{file_name}". Reason: {reason}' },
+    text_en: "❌ We couldn't process \"{file_name}\". Reason: {reason}" },
   { slug: 'welcome', name: 'Welcome message', description: 'First message on /start.', is_active: true,
-    text_uz: 'Quizly'ga xush kelibsiz, {first_name}! 🎉',
+    text_uz: "Quizly'ga xush kelibsiz, {first_name}! 🎉",
     text_ru: 'Добро пожаловать в Quizly, {first_name}! 🎉',
     text_en: 'Welcome to Quizly, {first_name}! 🎉' },
   { slug: 'payment_success', name: 'Payment success', description: 'Confirmation after successful payment.', is_active: false,
-    text_uz: '💳 To'lov qabul qilindi. Rahmat!',
+    text_uz: "💳 To'lov qabul qilindi. Rahmat!",
     text_ru: '💳 Платёж получен. Спасибо!',
     text_en: '💳 Payment received. Thank you!' },
 ];
@@ -108,7 +108,10 @@ const useStore = (selector = (s) => s) =>
   React.useSyncExternalStore(store.subscribe, () => selector(store.get()));
 
 // ---- Real API ---------------------------------------------------------------
-const API_BASE = window.location.origin + '/admin';
+const _origin = window.location.origin;
+const _path = window.location.pathname; // e.g. /admin/
+const _prefix = _path.startsWith('/admin') ? '/admin' : '';
+const API_BASE = _origin + _prefix;
 
 async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('admin_token') || '';

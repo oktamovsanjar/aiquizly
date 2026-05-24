@@ -22,29 +22,95 @@ from keyboards.inline import (
     referral_keyboard,
     premium_plans_keyboard,
     payment_keyboard,
+    back_to_profile_keyboard,
 )
 from utils.api import game_client, subscription_client
 from utils.i18n import t
 
 router = Router()
 
-LEVEL_ICONS = {
+# Yangi 11-tier tizimi (Faza 2)
+LEVEL_TIER_ICONS = {
     "beginner": "🌱",
-    "learner": "📗",
+    "student": "📗",
     "expert": "📘",
-    "master": "📙",
-    "professor": "📕",
+    "skilled": "📙",
+    "experienced": "📕",
+    "mentor": "🎓",
+    "sage": "🦉",
+    "professor": "🏛",
     "academic": "👑",
+    "legendary": "⭐",
+    "legend": "🏆",
 }
 
-LEVEL_NAMES_UZ = {
-    "beginner": "Yangi",
-    "learner": "O'rganuvchi",
+LEVEL_TIER_NAMES_UZ = {
+    "beginner": "Yangi boshlovchi",
+    "student": "Talaba",
     "expert": "Bilimdon",
-    "master": "Ustoz",
+    "skilled": "Mahoratli",
+    "experienced": "Tajribali",
+    "mentor": "Ustoz",
+    "sage": "Donishmand",
     "professor": "Professor",
     "academic": "Akademik",
+    "legendary": "Afsonaviy",
+    "legend": "Legenda",
 }
+
+# Eski 6-tier tizimi — backward compat (eski cache larda hali bo'lishi mumkin)
+LEGACY_LEVEL_MAP = {
+    "learner": "student",   # eski 'learner' -> yangi 'student'
+    "master": "skilled",    # eski 'master' -> yangi 'skilled'
+}
+
+# Birlashtirilgan map'lar — eski va yangi keylar ham ishlashi uchun
+LEVEL_ICONS = {**LEVEL_TIER_ICONS}
+LEVEL_NAMES_UZ = {**LEVEL_TIER_NAMES_UZ}
+# Eski keylar uchun mappings
+for old, new in LEGACY_LEVEL_MAP.items():
+    LEVEL_ICONS[old] = LEVEL_TIER_ICONS[new]
+    LEVEL_NAMES_UZ[old] = LEVEL_TIER_NAMES_UZ[new]
+
+
+# Level progress helper'i — server bilan bir xil formula (50 * N^1.7)
+def _xp_for_level(level: int) -> int:
+    if level <= 1:
+        return 0
+    if level > 100:
+        level = 100
+    return round(50.0 * (level ** 1.7))
+
+
+def compute_level_progress(total_xp: int) -> tuple[int, int, int, float]:
+    """Joriy daraja ichidagi progress. Server LevelProgress bilan mos.
+
+    Returns: (level, current_xp, needed_xp, ratio)
+    """
+    if total_xp < 0:
+        total_xp = 0
+    # Binary search
+    lo, hi = 1, 100
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if _xp_for_level(mid) <= total_xp:
+            lo = mid
+        else:
+            hi = mid - 1
+    level = lo
+    if level >= 100:
+        return 100, 0, 0, 1.0
+    base = _xp_for_level(level)
+    next_xp = _xp_for_level(level + 1)
+    cur = total_xp - base
+    needed = next_xp - base
+    ratio = cur / needed if needed > 0 else 1.0
+    return level, cur, needed, max(0.0, min(1.0, ratio))
+
+
+def _progress_bar(ratio: float, width: int = 12) -> str:
+    filled = int(round(ratio * width))
+    return "█" * filled + "░" * (width - filled)
 
 
 # ─────────────────────────── Profil ───────────────────────────
@@ -86,6 +152,14 @@ async def show_profile(event, state=None) -> None:
     total_wrong = stats.get("total_wrong", 0)
     total_q = total_correct + total_wrong
 
+    # Daraja progress
+    level_num, cur_xp, needed_xp, ratio = compute_level_progress(total_xp)
+    bar = _progress_bar(ratio, width=12)
+    remaining_xp = max(0, needed_xp - cur_xp)
+
+    # Yutuqlar soni (alohida endpoint kerak emas — keyingi quizdan keyin yangilanadi)
+    ach_count = stats.get("achievements_count")
+
     plan_text = (
         "💎 Premium"
         if plan == "premium"
@@ -96,14 +170,27 @@ async def show_profile(event, state=None) -> None:
 
     text = (
         f"👤 <b>{user.full_name}</b>\n"
-        f"{level_icon} {level_name} ({total_xp} XP)\n"
-        f"🔥 Streak: {streak} kun\n\n"
-        f"📊 Statistika:\n"
-        f"├── O'ynagan: {total_games} quiz\n"
-        f"├── To'g'ri: {accuracy:.0f}%\n"
-        f"└── Jami savollar: {total_q}\n\n"
-        f"{plan_text}"
+        f"{level_icon} <b>{level_name}</b> · Lvl {level_num}\n"
+        f"⚡ <b>{total_xp:,}</b> XP   ·   🔥 {streak} kun\n"
+        f"[{bar}] {int(ratio*100)}%\n"
     )
+    if level_num < 100:
+        text += f"Lvl {level_num+1} gacha: <b>{remaining_xp} XP</b>\n"
+    else:
+        text += "🏆 Eng yuqori darajaga yetdingiz!\n"
+
+    text += (
+        f"\n📊 <b>Statistika</b>\n"
+        f"├── 🎮 O'ynagan: <b>{total_games}</b> quiz\n"
+        f"├── ✅ To'g'ri: <b>{total_correct:,}</b>\n"
+        f"├── ❌ Noto'g'ri: <b>{total_wrong:,}</b>\n"
+        f"├── 🎯 Aniqlik: <b>{accuracy:.0f}%</b>\n"
+        f"└── 📚 Jami savollar: <b>{total_q:,}</b>\n"
+    )
+    if ach_count is not None:
+        text += f"🏅 Yutuqlar: <b>{ach_count}/24</b>\n"
+
+    text += f"\n{plan_text}"
 
     try:
         await send(text, reply_markup=profile_keyboard())
@@ -124,15 +211,23 @@ async def show_detail_stats(cb: CallbackQuery) -> None:
         stats = {}
 
     level = stats.get("level", "beginner")
+    total_xp = stats.get("total_xp", 0)
+    level_num, cur_xp, needed_xp, ratio = compute_level_progress(total_xp)
+    bar = _progress_bar(ratio, width=14)
     text = (
         f"📊 <b>Batafsil statistika</b>\n\n"
-        f"🎮 Jami o'yinlar: {stats.get('total_games', 0)}\n"
-        f"✅ To'g'ri: {stats.get('total_correct', 0)}\n"
-        f"❌ Noto'g'ri: {stats.get('total_wrong', 0)}\n"
+        f"🎮 Jami o'yinlar: {stats.get('total_games', 0):,}\n"
+        f"✅ To'g'ri: {stats.get('total_correct', 0):,}\n"
+        f"❌ Noto'g'ri: {stats.get('total_wrong', 0):,}\n"
         f"🎯 Aniqlik: {stats.get('accuracy', 0):.1f}%\n\n"
-        f"⭐ Jami XP: {stats.get('total_xp', 0)}\n"
-        f"🏆 Daraja: {LEVEL_ICONS.get(level, '🌱')} {LEVEL_NAMES_UZ.get(level, 'Yangi')}\n\n"
-        f"🔥 Hozirgi streak: {stats.get('current_streak', 0)} kun\n"
+        f"⭐ Jami XP: <b>{total_xp:,}</b>\n"
+        f"🏆 Daraja: {LEVEL_ICONS.get(level, '🌱')} {LEVEL_NAMES_UZ.get(level, 'Yangi')} · Lvl {level_num}\n"
+        f"[{bar}] {int(ratio*100)}%\n"
+    )
+    if level_num < 100:
+        text += f"Lvl {level_num+1} gacha: <b>{max(0, needed_xp - cur_xp)} XP</b>\n"
+    text += (
+        f"\n🔥 Hozirgi streak: {stats.get('current_streak', 0)} kun\n"
         f"📈 Eng uzun streak: {stats.get('longest_streak', 0)} kun"
     )
 
@@ -144,6 +239,62 @@ async def show_detail_stats(cb: CallbackQuery) -> None:
             ]
         ),
     )
+    await cb.answer()
+
+
+# ─────────────────────────── Yutuqlar ───────────────────────────
+
+
+@router.callback_query(F.data == "prof:achievements")
+async def show_achievements(cb: CallbackQuery) -> None:
+    """Yutuqlar sahifasi — ochilgan va yopiq yutuqlar ro'yxati."""
+    try:
+        data = await game_client().get_user_achievements(cb.from_user.id)
+    except Exception as e:
+        logger.warning("yutuqlar olishda xato: %s", e)
+        data = {}
+
+    unlocked = data.get("unlocked") or []
+    locked = data.get("locked") or []
+    total = data.get("total", len(unlocked) + len(locked))
+
+    lines = [f"🏅 <b>Yutuqlar</b> ({len(unlocked)}/{total})\n"]
+
+    if unlocked:
+        lines.append("✅ <b>Ochilgan:</b>")
+        # Eng oxirgi 15 ta ochilgan (UX uchun, 24+ bo'lsa ham)
+        for ach in unlocked[:15]:
+            icon = ach.get("icon") or "🏅"
+            name = ach.get("name") or ach.get("slug", "")
+            desc = ach.get("description") or ""
+            xp = ach.get("xp_reward", 0)
+            xp_suf = f" (+{xp} XP)" if xp > 0 else ""
+            lines.append(f"{icon} <b>{name}</b> — {desc}{xp_suf}")
+        if len(unlocked) > 15:
+            lines.append(f"<i>...va yana {len(unlocked) - 15} ta</i>")
+        lines.append("")
+
+    if locked:
+        lines.append("🔒 <b>Yopiq:</b>")
+        # Faqat dastlabki 10 ta (jonli "yopiq" yutuqlar — motivatsiya)
+        for ach in locked[:10]:
+            name = ach.get("name") or ach.get("slug", "")
+            desc = ach.get("description") or ""
+            xp = ach.get("xp_reward", 0)
+            xp_suf = f" (+{xp} XP)" if xp > 0 else ""
+            lines.append(f"❓ <i>{name}</i> — {desc}{xp_suf}")
+        if len(locked) > 10:
+            lines.append(f"<i>...va yana {len(locked) - 10} ta yopiq</i>")
+
+    if not unlocked and not locked:
+        lines.append("<i>Hozircha yutuqlar yo'q. Birinchi quizni yeching!</i>")
+
+    text = "\n".join(lines)
+
+    try:
+        await cb.message.edit_text(text, reply_markup=back_to_profile_keyboard())
+    except Exception:
+        await cb.message.answer(text, reply_markup=back_to_profile_keyboard())
     await cb.answer()
 
 
@@ -204,8 +355,8 @@ async def show_payment_options(cb: CallbackQuery) -> None:
         "yearly": {"uz": "Yillik", "ru": "Годовой", "en": "Yearly"},
     }
     price_labels = {
-        "monthly": {"uz": "29 000 so'm", "ru": "29 000 сум", "en": "29 000 UZS"},
-        "yearly": {"uz": "249 000 so'm", "ru": "249 000 сум", "en": "249 000 UZS"},
+        "monthly": {"uz": "1 ⭐ (aksiya!)", "ru": "1 ⭐ (акция!)", "en": "1 ⭐ (sale!)"},
+        "yearly": {"uz": "1 ⭐ (aksiya!)", "ru": "1 ⭐ (акция!)", "en": "1 ⭐ (sale!)"},
     }
     period_label = period_labels.get(period, {}).get(lang, period)
     price_label = price_labels.get(period, {}).get(lang, "")
@@ -216,10 +367,10 @@ async def show_payment_options(cb: CallbackQuery) -> None:
     await cb.answer()
 
 
-# Telegram Stars narxlari (1 USD ≈ 50 Stars)
+# Aksiya narxi
 _STARS_PRICES = {
-    "monthly": 150,  # ~3 USD
-    "yearly": 1200,  # ~24 USD
+    "monthly": 1,
+    "yearly": 1,
 }
 _PLAN_DAYS = {
     "monthly": 30,
@@ -341,18 +492,28 @@ async def _send_leaderboard(
 
     user_tg_id = caller_id or (message.from_user.id if message.from_user else None)
 
-    entries, rank_data = [], None
-    try:
-        lb_data = await game_client().get_leaderboard(period=api_period, limit=10)
-        entries = lb_data.get("entries") or []
-    except Exception as e:
-        logger.warning("leaderboard olishda xato: %s", e)
-
+    # Avval o'z rank ni topamiz — atrofini qancha katta tortishni belgilash uchun
+    rank_data = None
     if user_tg_id:
         try:
             rank_data = await game_client().get_user_rank(user_tg_id, period=api_period)
         except Exception:
             rank_data = None
+
+    my_rank = int(rank_data.get("rank", 0)) if rank_data else 0
+    my_score = int(rank_data.get("total", 0)) if rank_data else 0
+
+    # Agar foydalanuvchi 10 dan past bo'lsa, kattaroq slice olamiz (atrofini ko'rsatish uchun)
+    fetch_limit = 10
+    if my_rank > 10:
+        fetch_limit = max(my_rank + 2, 50)
+
+    entries = []
+    try:
+        lb_data = await game_client().get_leaderboard(period=api_period, limit=fetch_limit)
+        entries = lb_data.get("entries") or []
+    except Exception as e:
+        logger.warning("leaderboard olishda xato: %s", e)
 
     # UUID → user ma'lumotlari (first_name, username, telegram_id)
     user_info: dict = {}
@@ -372,37 +533,60 @@ async def _send_leaderboard(
             except Exception:
                 pass
 
-    medals = ["🥇", "🥈", "🥉"]
+    def _render_row(idx: int, e: dict) -> str:
+        medals = ["🥇", "🥈", "🥉"]
+        medal = medals[idx] if idx < 3 else f"  {idx + 1}."
+        uid = e.get("UserID") or e.get("user_id", "")
+        info = user_info.get(uid, {})
+        name = (
+            (info.get("username") and f"@{info['username']}")
+            or info.get("first_name")
+            or e.get("first_name")
+            or "User"
+        )
+        tg_id = info.get("telegram_id")
+        score = e.get("Score", e.get("total_score", e.get("score", 0)))
+        marker = " 👈" if tg_id == user_tg_id else ""
+        return f"{medal} <b>{name}</b> — {int(score):,} XP{marker}"
+
     if not entries:
         text = f"🏆 <b>Reyting — {period_label}</b>\n\n<i>Hozircha ma'lumot yo'q</i>"
     else:
         lines = [f"🏆 <b>Reyting — {period_label}</b>\n"]
-        for i, e in enumerate(entries[:10]):
-            medal = medals[i] if i < 3 else f"  {i + 1}."
-            uid = e.get("UserID") or e.get("user_id", "")
-            info = user_info.get(uid, {})
-            name = (
-                info.get("username") and f"@{info['username']}"
-                or info.get("first_name")
-                or e.get("first_name")
-                or f"User"
-            )
-            tg_id = info.get("telegram_id")
-            score = e.get("Score", e.get("total_score", e.get("score", 0)))
-            marker = " 👈" if tg_id == user_tg_id else ""
-            lines.append(f"{medal} <b>{name}</b> — {int(score)} XP{marker}")
+        top10 = entries[:10]
+        for i, e in enumerate(top10):
+            lines.append(_render_row(i, e))
+
+        # Agar foydalanuvchi top-10 dan tashqarida bo'lsa, atrofini ko'rsatamiz
+        if my_rank > 10 and len(entries) > 10:
+            # ±2 atrof: my_rank-2 .. my_rank+2
+            target_lo = max(11, my_rank - 2)
+            target_hi = my_rank + 2
+            around = [
+                (i, e) for i, e in enumerate(entries)
+                if target_lo <= (i + 1) <= target_hi
+            ]
+            if around:
+                lines.append("   ⋮")
+                for idx, e in around:
+                    lines.append(_render_row(idx, e))
+
+            # Top-10 ga yetish uchun qancha XP kerakligi
+            if len(top10) >= 10:
+                top10_score = top10[9].get(
+                    "Score", top10[9].get("total_score", top10[9].get("score", 0))
+                )
+                if my_score < int(top10_score):
+                    gap = int(top10_score) - my_score + 1
+                    lines.append(f"\n🎯 Top-10 ga kirish uchun: <b>{gap:,} XP</b> kerak")
+
         text = "\n".join(lines)
 
-    # O'z o'rni top-10 da bo'lmasa pastga qo'shamiz
-    my_rank = int(rank_data.get("rank", 0)) if rank_data else 0
-    my_score = int(rank_data.get("total", 0)) if rank_data else 0
-    if my_rank > 0:
-        # Top-10 da bor-yo'qligini tekshir (leaderboard da ko'rsatilganmi)
-        shown_tg_ids = {info.get("telegram_id") for info in user_info.values()}
-        if user_tg_id not in shown_tg_ids:
-            text += f"\n\n👤 <b>Sizning o'rningiz: {my_rank}-o'rin</b>"
-            if my_score:
-                text += f" — {my_score} XP"
+    # Foydalanuvchi top-10 da ham, atrofda ham yo'q bo'lsa (masalan, faqat rank API ishlatilgan)
+    if my_rank > 0 and my_rank > (len(entries) if entries else 0):
+        text += f"\n\n👤 <b>Sizning o'rningiz: {my_rank}-o'rin</b>"
+        if my_score:
+            text += f" — {my_score:,} XP"
 
     try:
         if edit:
@@ -425,12 +609,12 @@ async def show_referral(message: Message) -> None:
     bot_info = await message.bot.get_me()
     bot_username = bot_info.username
 
-    # Get user language
     lang = "uz"
+    referral_count = 0
     try:
         from db import AsyncSessionLocal
-        from db.models import User
-        from sqlalchemy import select
+        from db.models import User, Referral
+        from sqlalchemy import select, func
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -439,11 +623,23 @@ async def show_referral(message: Message) -> None:
             user = result.scalar_one_or_none()
             if user:
                 lang = user.language_code or "uz"
+                count_result = await session.execute(
+                    select(func.count()).select_from(Referral)
+                    .where(Referral.referrer_id == user.id)
+                )
+                referral_count = count_result.scalar() or 0
     except Exception:
         pass
 
+    invited_line = {
+        "uz": f"👥 Taklif qilganlar: <b>{referral_count} kishi</b>\n\n",
+        "ru": f"👥 Приглашённых: <b>{referral_count} чел.</b>\n\n",
+        "en": f"👥 Invited: <b>{referral_count} people</b>\n\n",
+    }.get(lang, "")
+
     text = (
-        t("referral_description", lang)
+        invited_line
+        + t("referral_description", lang)
         + f"\n<code>https://t.me/{bot_username}?start=ref_{user_id}</code>"
     )
 
